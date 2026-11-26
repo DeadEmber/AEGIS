@@ -1,0 +1,587 @@
+{
+ "id": "E4",
+ "title": "Base emp\u00edrica: cobertura, latencia, estrategias de referencia y replay del motor",
+ "aegis_version": "0.2.0",
+ "generated_at": "2026-11-26T18:29:12+00:00",
+ "datasets": {
+  "pumpfun_corpus": {
+   "repo": "Slinky21/Pumpfun_Memecoin_Corpus",
+   "revision": "13bec2bf3089d56d50c35e602616d1b993bb37f5"
+  },
+  "launchtape": {
+   "repo": "launchtape/solana-launch-tape",
+   "revision": "791aeee832cb9a10f55361f10972b33272c857f8"
+  }
+ },
+ "runtime_s": 406.1,
+ "data": {
+  "datasets": {
+   "pumpfun_corpus": {
+    "revision": "13bec2bf3089d56d50c35e602616d1b993bb37f5",
+    "period_observations": [
+     "2026-06-19T20:52:40.385069+00:00",
+     "2026-07-14T15:27:46.443891+00:00"
+    ],
+    "tokens": 5700,
+    "tokens_with_tradable_observations": 5063,
+    "tradable_observations": 1001581,
+    "non_tradable_observations": 390303,
+    "outcomes_retrospective": 5668,
+    "resolution_profile_s": [
+     [
+      7200.0,
+      62.6
+     ],
+     [
+      21600.0,
+      312.5
+     ],
+     [
+      86400.0,
+      916.0
+     ],
+     [
+      null,
+      1818.9
+     ]
+    ],
+    "tracking_hours": {
+     "p10": 16.3302343597677,
+     "p50": 47.52323707785871,
+     "p90": 47.88076272699568
+    },
+    "first_observation_since_graduation_s": {
+     "p10": 19.86,
+     "p50": 69.38,
+     "p90": 87845.81
+    },
+    "gaps": [
+     {
+      "from": "2026-07-03T00:00:00+00:00",
+      "to": "2026-07-04T00:00:00+00:00",
+      "why": "no graduations recorded (collection outage or gap; KNOWN_ISSUES \u00a75.5 for Jul 3)"
+     },
+     {
+      "from": "2026-07-12T00:00:00+00:00",
+      "to": "2026-07-13T00:00:00+00:00",
+      "why": "no graduations recorded (collection outage or gap; KNOWN_ISSUES \u00a75.5 for Jul 3)"
+     }
+    ],
+    "quality": {
+     "pool_sentinel": 1448,
+     "incomplete_data_rows": 48,
+     "non_tradable_rows": 390303,
+     "concentration_suspect_tokens": 0,
+     "missing_reserves_rows": 0
+    }
+   },
+   "launchtape": {
+    "revision": "791aeee832cb9a10f55361f10972b33272c857f8",
+    "period_observations": [
+     "2026-10-10T14:00:15.002000+00:00",
+     "2026-10-10T15:59:57.199000+00:00"
+    ],
+    "tokens": 119,
+    "tokens_with_tradable_observations": 82,
+    "tradable_observations": 7579,
+    "non_tradable_observations": 0,
+    "outcomes_retrospective": 67,
+    "resolution_profile_s": [
+     [
+      null,
+      15.0
+     ]
+    ],
+    "tracking_hours": {
+     "p10": 0.1875,
+     "p50": 0.5005658333831363,
+     "p90": 0.5011838888459735
+    },
+    "first_observation_since_graduation_s": {
+     "p10": 15.0,
+     "p50": 15.0,
+     "p90": 15.0
+    },
+    "gaps": [
+     {
+      "from": "2026-10-10T14:00:22.088000+00:00",
+      "to": "2026-10-10T14:00:23.203000+00:00",
+      "why": "launchtape feed down/up"
+     },
+     {
+      "from": "2026-10-10T14:00:30.119000+00:00",
+      "to": "2026-10-10T14:00:31.502000+00:00",
+      "why": "launchtape feed down/up"
+     }
+    ],
+    "quality": {
+     "trades": 417347,
+     "virtual_quote_carried": 385103,
+     "late_grad": 0
+    }
+   }
+  },
+  "reference": [
+   {
+    "label": "basic+trailing",
+    "contributions_eur": 200.0,
+    "net_worth_liquidable_eur": 47.8393,
+    "net_worth_mark_to_last_eur": 64.8319,
+    "net_worth_censored_zero_eur": 47.8561,
+    "tokens_signalled": 1614,
+    "buys": 862,
+    "sells": 576,
+    "win_rate_closed": 0.5139,
+    "median_multiple_closed": 1.0063,
+    "mean_multiple_closed": 1.2259,
+    "peak_ge_x2": 136,
+    "peak_ge_x2_realised_ge_x2": 53,
+    "median_peak_capture": 0.6503,
+    "cash_idle_share": 0.3348,
+    "pool_fees_eur": 16.8038,
+    "network_fees_eur": 9.777,
+    "censored_open_positions": 286,
+    "reconciliation_ok": true,
+    "mean_return_per_ticket": -0.1611,
+    "fingerprint": "810444ba4e55",
+    "dataset": "pumpfun_corpus",
+    "allocation": "full reinvestment, no pacing",
+    "owner_reported_eur": 122.76
+   },
+   {
+    "label": "strict+hold",
+    "contributions_eur": 200.0,
+    "net_worth_liquidable_eur": 18.6996,
+    "net_worth_mark_to_last_eur": 96.2631,
+    "net_worth_censored_zero_eur": 18.8356,
+    "tokens_signalled": 464,
+    "buys": 200,
+    "sells": 0,
+    "win_rate_closed": null,
+    "median_multiple_closed": null,
+    "mean_multiple_closed": null,
+    "peak_ge_x2": 0,
+    "peak_ge_x2_realised_ge_x2": 0,
+    "median_peak_capture": 0.0032,
+    "cash_idle_share": 0.2358,
+    "pool_fees_eur": 2.0466,
+    "network_fees_eur": 1.3191,
+    "censored_open_positions": 200,
+    "reconciliation_ok": true,
+    "mean_return_per_ticket": -0.6129,
+    "fingerprint": "3090be30e64d",
+    "dataset": "pumpfun_corpus",
+    "allocation": "full reinvestment, no pacing",
+    "owner_reported_eur": null
+   },
+   {
+    "label": "strict+trailing",
+    "contributions_eur": 200.0,
+    "net_worth_liquidable_eur": 144.2904,
+    "net_worth_mark_to_last_eur": 150.3882,
+    "net_worth_censored_zero_eur": 144.1509,
+    "tokens_signalled": 464,
+    "buys": 464,
+    "sells": 320,
+    "win_rate_closed": 0.5281,
+    "median_multiple_closed": 1.0198,
+    "mean_multiple_closed": 1.2858,
+    "peak_ge_x2": 81,
+    "peak_ge_x2_realised_ge_x2": 32,
+    "median_peak_capture": 0.668,
+    "cash_idle_share": 0.6764,
+    "pool_fees_eur": 9.043,
+    "network_fees_eur": 5.242,
+    "censored_open_positions": 144,
+    "reconciliation_ok": true,
+    "mean_return_per_ticket": -0.0998,
+    "fingerprint": "09064cfcfb10",
+    "dataset": "pumpfun_corpus",
+    "allocation": "full reinvestment, no pacing",
+    "owner_reported_eur": 198.94
+   },
+   {
+    "label": "strict+trailing+context_raw",
+    "contributions_eur": 200.0,
+    "net_worth_liquidable_eur": 166.5566,
+    "net_worth_mark_to_last_eur": 171.4337,
+    "net_worth_censored_zero_eur": 166.4645,
+    "tokens_signalled": 318,
+    "buys": 318,
+    "sells": 219,
+    "win_rate_closed": 0.5205,
+    "median_multiple_closed": 1.0197,
+    "mean_multiple_closed": 1.3141,
+    "peak_ge_x2": 59,
+    "peak_ge_x2_realised_ge_x2": 22,
+    "median_peak_capture": 0.6763,
+    "cash_idle_share": 0.8115,
+    "pool_fees_eur": 6.2771,
+    "network_fees_eur": 3.6617,
+    "censored_open_positions": 99,
+    "reconciliation_ok": true,
+    "mean_return_per_ticket": -0.0794,
+    "fingerprint": "4ee0ea88a008",
+    "dataset": "pumpfun_corpus",
+    "allocation": "full reinvestment, no pacing",
+    "owner_reported_eur": 210.72
+   },
+   {
+    "label": "strict+trailing+context_rate",
+    "contributions_eur": 200.0,
+    "net_worth_liquidable_eur": 140.0021,
+    "net_worth_mark_to_last_eur": 146.095,
+    "net_worth_censored_zero_eur": 139.8627,
+    "tokens_signalled": 458,
+    "buys": 458,
+    "sells": 315,
+    "win_rate_closed": 0.5302,
+    "median_multiple_closed": 1.0247,
+    "mean_multiple_closed": 1.27,
+    "peak_ge_x2": 80,
+    "peak_ge_x2_realised_ge_x2": 31,
+    "median_peak_capture": 0.668,
+    "cash_idle_share": 0.6727,
+    "pool_fees_eur": 8.866,
+    "network_fees_eur": 5.1791,
+    "censored_open_positions": 143,
+    "reconciliation_ok": true,
+    "mean_return_per_ticket": -0.1129,
+    "fingerprint": "a21681119970",
+    "dataset": "pumpfun_corpus",
+    "allocation": "full reinvestment, no pacing",
+    "owner_reported_eur": null
+   },
+   {
+    "label": "strict+aegis_exit",
+    "contributions_eur": 200.0,
+    "net_worth_liquidable_eur": 65.3318,
+    "net_worth_mark_to_last_eur": 79.3912,
+    "net_worth_censored_zero_eur": 64.3482,
+    "tokens_signalled": 464,
+    "buys": 464,
+    "sells": 580,
+    "win_rate_closed": 0.0152,
+    "median_multiple_closed": 0.5074,
+    "mean_multiple_closed": 0.5518,
+    "peak_ge_x2": 0,
+    "peak_ge_x2_realised_ge_x2": 0,
+    "median_peak_capture": 0.4449,
+    "cash_idle_share": 0.5333,
+    "pool_fees_eur": 7.9825,
+    "network_fees_eur": 6.9942,
+    "censored_open_positions": 266,
+    "reconciliation_ok": true,
+    "mean_return_per_ticket": -0.3115,
+    "fingerprint": "5fad044eae23",
+    "dataset": "pumpfun_corpus",
+    "allocation": "full reinvestment, no pacing",
+    "owner_reported_eur": null
+   },
+   {
+    "label": "strict+trailing (AEGIS 0.2 allocation)",
+    "contributions_eur": 200.0,
+    "net_worth_liquidable_eur": 169.4288,
+    "net_worth_mark_to_last_eur": 171.6552,
+    "net_worth_censored_zero_eur": 169.3532,
+    "tokens_signalled": 464,
+    "buys": 299,
+    "sells": 209,
+    "win_rate_closed": 0.5598,
+    "median_multiple_closed": 1.0445,
+    "mean_multiple_closed": 1.2989,
+    "peak_ge_x2": 52,
+    "peak_ge_x2_realised_ge_x2": 19,
+    "median_peak_capture": 0.6716,
+    "cash_idle_share": 0.7602,
+    "pool_fees_eur": 5.894,
+    "network_fees_eur": 3.3512,
+    "censored_open_positions": 90,
+    "reconciliation_ok": true,
+    "mean_return_per_ticket": -0.0844,
+    "fingerprint": "5b82862f068a",
+    "dataset": "pumpfun_corpus",
+    "allocation": "paced + recycled 10%/day (0.2 default)"
+   },
+   {
+    "label": "basic+trailing",
+    "contributions_eur": 100.0,
+    "net_worth_liquidable_eur": 77.8947,
+    "net_worth_mark_to_last_eur": 80.6377,
+    "net_worth_censored_zero_eur": 58.5423,
+    "tokens_signalled": 65,
+    "buys": 65,
+    "sells": 23,
+    "win_rate_closed": 0.3478,
+    "median_multiple_closed": 0.8893,
+    "mean_multiple_closed": 0.7561,
+    "peak_ge_x2": 3,
+    "peak_ge_x2_realised_ge_x2": 0,
+    "median_peak_capture": 0.3806,
+    "cash_idle_share": 0.6971,
+    "pool_fees_eur": 0.806,
+    "network_fees_eur": 0.9092,
+    "censored_open_positions": 42,
+    "reconciliation_ok": true,
+    "mean_return_per_ticket": -0.3925,
+    "fingerprint": "810444ba4e55",
+    "dataset": "launchtape",
+    "allocation": "full reinvestment, no pacing",
+    "owner_reported_eur": null
+   },
+   {
+    "label": "strict+hold",
+    "contributions_eur": 100.0,
+    "net_worth_liquidable_eur": 89.9171,
+    "net_worth_mark_to_last_eur": 90.6889,
+    "net_worth_censored_zero_eur": 82.0773,
+    "tokens_signalled": 21,
+    "buys": 21,
+    "sells": 0,
+    "win_rate_closed": null,
+    "median_multiple_closed": null,
+    "mean_multiple_closed": null,
+    "peak_ge_x2": 0,
+    "peak_ge_x2_realised_ge_x2": 0,
+    "median_peak_capture": 0.0,
+    "cash_idle_share": 0.8648,
+    "pool_fees_eur": 0.1982,
+    "network_fees_eur": 0.2171,
+    "censored_open_positions": 21,
+    "reconciliation_ok": true,
+    "mean_return_per_ticket": -0.5899,
+    "fingerprint": "3090be30e64d",
+    "dataset": "launchtape",
+    "allocation": "full reinvestment, no pacing",
+    "owner_reported_eur": null
+   },
+   {
+    "label": "strict+trailing",
+    "contributions_eur": 100.0,
+    "net_worth_liquidable_eur": 91.3735,
+    "net_worth_mark_to_last_eur": 92.1404,
+    "net_worth_censored_zero_eur": 85.1147,
+    "tokens_signalled": 21,
+    "buys": 21,
+    "sells": 6,
+    "win_rate_closed": 0.0,
+    "median_multiple_closed": 0.7612,
+    "mean_multiple_closed": 0.6528,
+    "peak_ge_x2": 0,
+    "peak_ge_x2_realised_ge_x2": 0,
+    "median_peak_capture": 0.2451,
+    "cash_idle_share": 0.8986,
+    "pool_fees_eur": 0.2362,
+    "network_fees_eur": 0.2791,
+    "censored_open_positions": 15,
+    "reconciliation_ok": true,
+    "mean_return_per_ticket": -0.4789,
+    "fingerprint": "09064cfcfb10",
+    "dataset": "launchtape",
+    "allocation": "full reinvestment, no pacing",
+    "owner_reported_eur": null
+   },
+   {
+    "label": "strict+trailing+context_raw",
+    "contributions_eur": 100.0,
+    "net_worth_liquidable_eur": 99.9297,
+    "net_worth_mark_to_last_eur": 99.9297,
+    "net_worth_censored_zero_eur": 98.2407,
+    "tokens_signalled": 3,
+    "buys": 3,
+    "sells": 1,
+    "win_rate_closed": 0.0,
+    "median_multiple_closed": 0.9476,
+    "mean_multiple_closed": 0.9476,
+    "peak_ge_x2": 0,
+    "peak_ge_x2_realised_ge_x2": 0,
+    "median_peak_capture": 0.7869,
+    "cash_idle_share": 0.9915,
+    "pool_fees_eur": 0.0393,
+    "network_fees_eur": 0.0414,
+    "censored_open_positions": 2,
+    "reconciliation_ok": true,
+    "mean_return_per_ticket": -0.1211,
+    "fingerprint": "4ee0ea88a008",
+    "dataset": "launchtape",
+    "allocation": "full reinvestment, no pacing",
+    "owner_reported_eur": null
+   },
+   {
+    "label": "strict+trailing+context_rate",
+    "contributions_eur": 100.0,
+    "net_worth_liquidable_eur": 91.3735,
+    "net_worth_mark_to_last_eur": 92.1404,
+    "net_worth_censored_zero_eur": 85.1147,
+    "tokens_signalled": 21,
+    "buys": 21,
+    "sells": 6,
+    "win_rate_closed": 0.0,
+    "median_multiple_closed": 0.7612,
+    "mean_multiple_closed": 0.6528,
+    "peak_ge_x2": 0,
+    "peak_ge_x2_realised_ge_x2": 0,
+    "median_peak_capture": 0.2451,
+    "cash_idle_share": 0.8986,
+    "pool_fees_eur": 0.2362,
+    "network_fees_eur": 0.2791,
+    "censored_open_positions": 15,
+    "reconciliation_ok": true,
+    "mean_return_per_ticket": -0.4789,
+    "fingerprint": "a21681119970",
+    "dataset": "launchtape",
+    "allocation": "full reinvestment, no pacing",
+    "owner_reported_eur": null
+   },
+   {
+    "label": "strict+aegis_exit",
+    "contributions_eur": 100.0,
+    "net_worth_liquidable_eur": 91.9594,
+    "net_worth_mark_to_last_eur": 92.7313,
+    "net_worth_censored_zero_eur": 85.5168,
+    "tokens_signalled": 21,
+    "buys": 21,
+    "sells": 9,
+    "win_rate_closed": 0.0,
+    "median_multiple_closed": 0.2754,
+    "mean_multiple_closed": 0.3315,
+    "peak_ge_x2": 0,
+    "peak_ge_x2_realised_ge_x2": 0,
+    "median_peak_capture": 0.288,
+    "cash_idle_share": 0.9067,
+    "pool_fees_eur": 0.2395,
+    "network_fees_eur": 0.3101,
+    "censored_open_positions": 14,
+    "reconciliation_ok": true,
+    "mean_return_per_ticket": -0.4438,
+    "fingerprint": "5fad044eae23",
+    "dataset": "launchtape",
+    "allocation": "full reinvestment, no pacing",
+    "owner_reported_eur": null
+   },
+   {
+    "label": "strict+trailing (AEGIS 0.2 allocation)",
+    "contributions_eur": 100.0,
+    "net_worth_liquidable_eur": 95.5663,
+    "net_worth_mark_to_last_eur": 95.5663,
+    "net_worth_censored_zero_eur": 95.5663,
+    "tokens_signalled": 21,
+    "buys": 6,
+    "sells": 2,
+    "win_rate_closed": 0.0,
+    "median_multiple_closed": 0.4906,
+    "mean_multiple_closed": 0.4906,
+    "peak_ge_x2": 0,
+    "peak_ge_x2_realised_ge_x2": 0,
+    "median_peak_capture": 0.0,
+    "cash_idle_share": 0.9653,
+    "pool_fees_eur": 0.0661,
+    "network_fees_eur": 0.0826,
+    "censored_open_positions": 4,
+    "reconciliation_ok": true,
+    "mean_return_per_ticket": -0.8365,
+    "fingerprint": "5b82862f068a",
+    "dataset": "launchtape",
+    "allocation": "paced + recycled 10%/day (0.2 default)"
+   }
+  ],
+  "latency": {
+   "dataset": "launchtape",
+   "observations": 20950,
+   "lags": {
+    "1": {
+     "n": 20930,
+     "signed_mean_bps": -11.2,
+     "signed_p10_bps": -15.61842883926058,
+     "signed_p50_bps": 0.0,
+     "signed_p90_bps": 36.14648917062179,
+     "abs_p50_bps": 0.0,
+     "abs_p90_bps": 136.57567185531653,
+     "share_unchanged": 0.554
+    },
+    "2": {
+     "n": 20917,
+     "signed_mean_bps": -27.8,
+     "signed_p10_bps": -50.981570879976914,
+     "signed_p50_bps": 0.0,
+     "signed_p90_bps": 72.78164108564096,
+     "abs_p50_bps": 0.09153152378185077,
+     "abs_p90_bps": 255.77254424624826,
+     "share_unchanged": 0.455
+    },
+    "5": {
+     "n": 20882,
+     "signed_mean_bps": -70.1,
+     "signed_p10_bps": -186.9407663761616,
+     "signed_p50_bps": 0.0,
+     "signed_p90_bps": 155.48966407319762,
+     "abs_p50_bps": 10.524062913873633,
+     "abs_p90_bps": 490.58485115737545,
+     "share_unchanged": 0.363
+    },
+    "10": {
+     "n": 20814,
+     "signed_mean_bps": -140.2,
+     "signed_p10_bps": -359.76385467481276,
+     "signed_p50_bps": 0.0,
+     "signed_p90_bps": 280.2132342020952,
+     "abs_p50_bps": 39.11929819918835,
+     "abs_p90_bps": 776.2682001980182,
+     "share_unchanged": 0.312
+    },
+    "30": {
+     "n": 20542,
+     "signed_mean_bps": -424.7,
+     "signed_p10_bps": -895.6810259654886,
+     "signed_p50_bps": 0.0,
+     "signed_p90_bps": 662.8109028058478,
+     "abs_p50_bps": 128.38668272029363,
+     "abs_p90_bps": 1629.674277966377,
+     "share_unchanged": 0.257
+    },
+    "60": {
+     "n": 20134,
+     "signed_mean_bps": -865.6,
+     "signed_p10_bps": -1679.3798728359066,
+     "signed_p50_bps": 0.0,
+     "signed_p90_bps": 1043.9053424459748,
+     "abs_p50_bps": 256.3066226496402,
+     "abs_p90_bps": 2629.7057366571144,
+     "share_unchanged": 0.223
+    }
+   }
+  },
+  "engine_replay": {
+   "default": {
+    "cycles": 24,
+    "always_reconciled": true,
+    "buys": 0,
+    "sells": 0,
+    "security_assessments": 0,
+    "net_worth_liquidable_eur": 100.0
+   },
+   "no_24h_age_floor": {
+    "cycles": 108,
+    "always_reconciled": true,
+    "buys": 6,
+    "sells": 2,
+    "security_assessments": 51,
+    "net_worth_liquidable_eur": 97.747525031133
+   }
+  },
+  "cross_check": {
+   "60": {
+    "n": 63,
+    "median_ratio": 1.0
+   },
+   "300": {
+    "n": 63,
+    "median_ratio": 1.0
+   },
+   "600": {
+    "n": 63,
+    "median_ratio": 1.0
+   }
+  }
+ }
+}

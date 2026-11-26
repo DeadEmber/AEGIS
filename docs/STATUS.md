@@ -1,13 +1,17 @@
 # Estado del proyecto (registro persistente entre sesiones)
 
-Última actualización: 2026-11-26 · rama `claude/aegis-foundation` · versión 0.2.3
+Última actualización: 2026-11-26 · rama `claude/aegis-foundation` · versión 0.3.0 (fase 2)
 
 ## Resumen
 
 El *vertical slice* completo funciona con datos reales: descubrimiento → seguridad → indicadores →
 decisión → ejecución simulada con cotizaciones de Jupiter y costes de Solana → contabilidad de partida
-doble → conciliación → API → dashboard. **La rentabilidad de la estrategia no está demostrada** y no
-puede demostrarse todavía (ver `BACKTEST_METHODOLOGY.md`).
+doble → conciliación → API → dashboard. **La rentabilidad de la estrategia no está demostrada.**
+
+**Fase 2 (0.3.0).** Existe una base empírica histórica real point-in-time y un simulador que usa el
+motor y el libro de producción. Con costes realistas, **ninguna política probada supera a no invertir**
+en los periodos disponibles, que además ya están explorados: Pumpfun Corpus del 19/06 al 15/07/2026 y
+Launch Tape del 10/10/2026. Ver `docs/research/PHASE2_SUMMARY.md`.
 
 ## Validación en vivo realizada (2026-11-26, entorno de desarrollo)
 
@@ -77,11 +81,64 @@ No se cambia la política: es justo la pregunta que E2 debe responder con datos 
 | P2 Ventas parciales | **Sí** | `after_exit` solo al cierre total | Cada venta abre un contrafactual de las **unidades vendidas** (cantidad, importe neto y bruto, costes, ganancia realizada); métrica de beneficio sacrificado frente a reinversión | `test_partial_sales_are_tracked_as_units_sold_counterfactuals`, `test_units_sold_shadow_measures_forgone_upside` |
 | P2 Reentrada con residual | **Sí** | Los tokens en cartera se excluyen de entradas | Hipótesis E3: se registra WATCH `reentry_blocked_by_open_residual` y la cohorte sombra correspondiente; **sin cambio de política ni más exposición** | `test_residual_reentry_signal_recorded_not_bought` |
 
+## Fase 2: base empírica, liquidez, inteligencia y validación (0.3.0)
+
+Realizado:
+
+- Datasets con revisión, hashes y licencia (`docs/DATASETS.md`).
+- Adaptadores point-in-time.
+- `HistoricalGateway` para el worker de producción.
+- Simulador rápido con el motor y el libro de producción.
+- Variantes de reciclaje.
+- Modelos de referencia con calibración.
+- Agente de valor de continuación.
+- Carteras A–I.
+- Walk-forward con purga y embargo, bootstrap por bloques y Holm.
+- Experimentos E4–E10 (`aegis research phase2`).
+- Panel de resultados en el Laboratorio del dashboard.
+
+Hallazgos materiales (detalle en `docs/research/PHASE2_SUMMARY.md`):
+
+1. **Ninguna política supera al efectivo.**
+   - El Champion de investigación (estricta + trailing 30 %, asignación de producción) termina la
+     ventana walk-forward con 177,93 EUR sobre 200 aportados. IC 90 % del objetivo: −49,0 … +8,5 EUR.
+   - No se distingue de la selección aleatoria tras controles básicos (176,31 EUR).
+   - La selección supervisada, el agente, la monetización contextual, el compuesto y las segundas
+     oportunidades empeoran el resultado.
+   - Tras Holm, no hay ninguna mejora significativa.
+2. **Comisión de PumpSwap real ~1,0–1,26 % por lado** (medida en 417 k trades), 3–4 veces el supuesto
+   anterior. Pero el coste dominante es la deriva direccional tras la graduación: −16 % de mediana entre
+   +60 s y +600 s; −866 pb de deriva media con 60 s de retraso.
+3. **El contexto «≥ 20 oportunidades/24 h» está contaminado por la cobertura** (ρ = 0,83 con las
+   graduaciones registradas por día). Su ventaja procede de operar menos.
+4. **El reciclaje completo amplifica la pérdida** cuando la expectativa es negativa (E5). Las variantes
+   siguen disponibles en la configuración, pero desactivadas por defecto.
+5. **El motor de salidas de producción no es apto para tokens recién graduados** (sale por
+   COLLAPSE/deterioro). No afecta a la operativa, porque la política de producción exige tokens de 24 h
+   o más.
+6. **El universo de la política de producción no se puede evaluar** con los datasets gratuitos: el
+   seguimiento acaba a las 48 h y faltan los recuentos de 24 h.
+
+Defectos encontrados y corregidos:
+
+- **La compra pagaba con reciclado más allá del tope de presupuesto.** Además, el modo «sin reciclaje»
+  no se respetaba y la contabilidad por categorías de efectivo era incorrecta. Corregido con un
+  presupuesto por cuenta en el worker y el simulador.
+- **El tope de reciclado llegaba sin cuantizar al libro** (`LedgerError` con el reciclaje limitado).
+  Corregido redondeando a la baja.
+
+Preregistro para la muestra nueva: ver §5 de `docs/research/PHASE2_SUMMARY.md`.
+
 ## Limitaciones vigentes
 
-- Sin universo histórico representativo ni backtest 2024–hoy (sesgo de supervivencia de las APIs
-  gratuitas).
-- Scores 100 % heurísticos y sin calibrar. No hay modelos entrenados.
+- Sin backtest 2024–hoy. Solo hay dos periodos históricos cortos, ya explorados por el propietario (fase
+  2), y ninguna muestra independiente: la próxima evidencia válida será el paper trading permanente o
+  días de Launch Tape comprados con autorización.
+- Scores operativos 100 % heurísticos y sin calibrar. Los modelos de la fase 2 son de investigación, no
+  están calibrados ni promovidos, y ningún camino de producción los carga.
+- El simulador del corpus ejecuta con la última observación (60 s). Es optimista frente a la latencia
+  medida y queda tratado como sensibilidad.
+- Para junio y julio de 2026 se asume el calendario de comisiones medido en octubre: es un supuesto.
 - Datos por polling con límites gratuitos (~9 llamadas/min en GeckoTerminal). Sin streaming.
 - Sin grafo de wallets ni ingesta de trades individuales.
 - El worker no está desplegado de forma permanente (requiere aprobación y coste).
@@ -93,8 +150,8 @@ No se cambia la política: es justo la pregunta que E2 debe responder con datos 
   tercera copia fuera del servidor es decisión del propietario: AEGIS no contrata servicios.
 - La cobertura del archivo se calcula leyendo la columna `id` de los Parquet en memoria. Es adecuado
   para millones de filas; para volúmenes mayores convendrá un anti-join en DuckDB.
-- El replay histórico real necesita un `HistoricalGateway` (fuente on-chain pendiente). La lógica de
-  cadencia y resolución ya está integrada y probada con datos simulados en rejilla.
+- Seguridad histórica: no hay cuentas de mint históricas. En un replay es UNKNOWN (bloquea) o se basa en
+  los invariantes de pump.fun (evidencia INDICATOR).
 - Las filas de la cartera sombra anteriores a 0.2.2 se marcan `legacy` y se reevalúan con la nueva
   lógica. Su cierre a 14 días con precios obsoletos no se reconstruye.
 - El valor liquidable de posiciones usa una estimación CPMM (no se pide cotización de venta para cada
@@ -106,7 +163,15 @@ No se cambia la política: es justo la pregunta que E2 debe responder con datos 
    de las aportaciones.
 2. **Fuente histórica on-chain** para el backtest 2024–hoy (Helius / Dune / BigQuery / Flipside): coste
    por determinar.
-3. ¿Mantener el ticket de 1 EUR? Con tarifas de prioridad altas no es viable (`COST_ANALYSIS.md`).
+3. ¿Mantener el ticket de 1 EUR? Con tarifas de prioridad altas no es viable (`COST_ANALYSIS.md`). La
+   fase 2 no da base para cambiarlo (E9).
+4. **Muestra independiente**: ¿comprar días completos de Launch Tape (10 USD/día, o 49 USD/mes con
+   historial completo) para probar **solo** los challengers preregistrados, o esperar a acumular datos
+   en paper trading permanente (que requiere el despliegue del punto 1)?
+5. ¿Subir `execution.estimated_pool_fee_bps` de 30 a ~110 pb para la estimación de reserva? Las
+   cotizaciones de Jupiter ya incluyen la comisión real, así que solo afecta a la estimación de respaldo.
+6. El bloque F (RL offline, supervisor LLM) no se inicia: los bloques A–E no muestran potencial
+   suficiente.
 
 ## Siguiente bloque ejecutable
 

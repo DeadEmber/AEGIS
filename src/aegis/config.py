@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     archive_dir: Path = Path("var/archive")
     # Local copies of registered historical datasets (never committed; see aegis.history.registry).
     datasets_dir: Path = Path("var/datasets")
+    # Versioned, derived phase-2 results served read-only by the API (/research/experiments).
+    research_results_dir: Path = Path("docs/research/results")
     # Backup destination for the archive (another disk / mounted volume). Empty = backups disabled.
     backup_dir: Path | None = None
     log_level: str = "INFO"

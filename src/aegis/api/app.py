@@ -359,6 +359,31 @@ def create_app(engine: Engine, settings: Settings, strategy: StrategyConfig | No
                 "horizons": [sh.label(h) for h in strategy.shadow.horizons_hours],
                 "summary": sh.summary(c, strategy.shadow), "positions": out}
 
+    @app.get("/research/experiments")
+    def research_experiments() -> dict[str, Any]:
+        """Phase-2 historical experiments (derived figures only, read from the versioned JSON results)."""
+        import json
+
+        cols = ("label", "dataset", "net_worth_liquidable_eur", "net_worth_mark_to_last_eur", "contributions_eur", "buys",
+                "sells", "mean_return_per_ticket", "win_rate_closed", "peak_ge_x2", "peak_ge_x2_realised_ge_x2",
+                "median_peak_capture", "cash_idle_share", "owner_reported_eur")
+        out = []
+        root = settings.research_results_dir
+        files = sorted(root.glob("E*.json"), key=lambda p: int(p.stem[1:]) if p.stem[1:].isdigit() else 0) \
+            if root.exists() else []
+        for p in files:
+            doc = json.loads(p.read_text())
+            data = doc.get("data", {})
+            rows = []
+            for key in ("reference", "rows", "economic", "portfolios"):
+                rows += [{c: r.get(c) for c in cols} for r in data.get(key, [])]
+            out.append({"id": doc["id"], "title": doc["title"], "generated_at": doc["generated_at"],
+                        "aegis_version": doc["aegis_version"], "datasets": doc.get("datasets", {}),
+                        "test_window": data.get("test_window") or data.get("period"), "rows": rows})
+        return {"note": "Historical research on real point-in-time data (explored periods: not independent "
+                        "evidence). Multiples are net of measured fees and costs; nothing here is a forecast.",
+                "experiments": out}
+
     @app.get("/intelligence")
     def intelligence(c=Depends(conn)) -> dict[str, Any]:  # type: ignore[no-untyped-def]
         models = _rows(c.execute(select(s.model_versions)))

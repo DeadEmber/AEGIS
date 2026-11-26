@@ -7,6 +7,7 @@ Experiment IDs continue after E1 (ECV), E2 (monetisation) and E3 (residual re-en
   E7  supervised baselines and calibration (block C)
   E8  continuation value and the decision agent vs the Champion (block D)
   E9  validation: walk-forward, block bootstrap, multiple comparisons, costs, tickets, portfolios A-I (block E)
+  E10 recovery of losers and monetisation rules (stops, time stops, capital recovery)
 
 Every experiment returns plain data (no raw dataset rows: Launch Tape forbids redistribution; derived
 results are allowed). The report records dataset revisions, config fingerprints and code version.
@@ -570,7 +571,7 @@ EXPERIMENTS.update({
 # ============================================================================ report
 def render(results_dir: Path, out: Path) -> Path:
     """Markdown report from the JSON results (Spanish; numbers only, no raw dataset rows)."""
-    docs = {p.stem: json.loads(p.read_text()) for p in sorted(results_dir.glob("E*.json"))}
+    docs = {p.stem: json.loads(p.read_text()) for p in sorted(results_dir.glob("E*.json"), key=lambda p: int(p.stem[1:]))}
     L: list[str] = ["# AEGIS — Fase 2: resultados empíricos reproducibles", "",
                     "Generado por `aegis research phase2`. Datos: revisiones fijadas en `aegis.history.registry`. "
                     "Ninguna cifra es una promesa de rentabilidad: son resultados históricos con los supuestos indicados.", ""]
@@ -613,3 +614,36 @@ def _fmt(v: Any) -> str:
     if isinstance(v, float):
         return f"{v:.4g}"
     return str(v)
+
+
+# ============================================================================ E10 (recovery of losers)
+def e10_recovery(base: Path) -> dict[str, Any]:
+    """Recovering capital from losers: stops, time stops and capital recovery, around the Champion exit."""
+    from decimal import Decimal
+
+    from aegis.research import presets
+
+    pf = _pf(base)
+    t = presets.TRAILING
+    variants = {
+        "champion trailing 30%": t,
+        "trailing 20%": t.model_copy(update={"trailing_pct": Decimal("0.20")}),
+        "trailing 45%": t.model_copy(update={"trailing_pct": Decimal("0.45")}),
+        "trailing activates at x1.5": t.model_copy(update={"trailing_activate_multiple": Decimal("1.5")}),
+        "+ stop at x0.5": t.model_copy(update={"stop_loss_multiple": Decimal("0.5")}),
+        "+ stop at x0.7": t.model_copy(update={"stop_loss_multiple": Decimal("0.7")}),
+        "+ time stop 6 h": t.model_copy(update={"max_hold_seconds": 6 * 3600}),
+        "+ time stop 24 h": t.model_copy(update={"max_hold_seconds": 24 * 3600}),
+        "+ recovery at x2, keep 10%": t.model_copy(update={"recovery_multiple": Decimal(2),
+                                                           "residual_fraction": Decimal("0.1")}),
+        "+ recovery at x1.5, keep 25%": t.model_copy(update={"recovery_multiple": Decimal("1.5"),
+                                                             "residual_fraction": Decimal("0.25")}),
+    }
+    rows = [_row(runner.run_preset(pf, "strict+trailing", exit_cfg=x, label=name))
+            for name, x in variants.items()]
+    return {"period": [CORPUS_START, CORPUS_END], "rows": rows,
+            "note": "single variable: exit rule only (strict entries, full reinvestment, measured fees)"}
+
+
+EXPERIMENTS["E10"] = ("Recuperación de perdedoras y monetización: trailing, stops, salidas por tiempo, recuperación",
+                      e10_recovery)

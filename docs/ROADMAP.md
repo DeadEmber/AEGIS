@@ -7,19 +7,24 @@
 | 2 | Integración verificable de datos reales | ✅ 6 fuentes verificadas, fixtures reales. ⏳ streaming |
 | 3 | Descubrimiento, seguridad y cartera simulada | ✅ |
 | 4 | Biblioteca de indicadores | ✅ 46 indicadores. ⏳ evaluación incremental |
-| 5 | Laboratorio histórico de explosiones | ⏳ **bloqueado por la fuente histórica** (ver BACKTEST_METHODOLOGY) |
-| 6 | Modelos de detección de máximos | ⏳ (depende de 5 y del dataset de paper) |
+| 5 | Laboratorio histórico de explosiones | 🟡 fase 2: corpus post-graduación (junio–julio de 2026) y Launch Tape (octubre) con adaptadores point-in-time. ⏳ 2024–hoy y universo maduro (≥ 24 h) |
+| 6 | Modelos de detección de máximos | 🟡 referencias de valor de continuación (walk-forward); sin promoción |
 | 7 | Modelos de segundas explosiones | ⏳ |
 | 8 | Motor de decisiones y asignación de capital | ✅ baseline determinista |
-| 9 | Backtesting integral | 🟡 motor de replay listo (mismo `Worker` + `ManualClock`); falta `HistoricalGateway` |
-| 10 | Shadow trading y aprendizaje controlado | 🟡 cartera sombra y `SHADOW_TRADING`; falta entrenamiento |
+| 9 | Backtesting integral | 🟡 `HistoricalGateway` + `Worker.replay` y simulador rápido con el libro de producción; walk-forward, bootstrap y Holm. Falta una muestra independiente |
+| 10 | Shadow trading y aprendizaje controlado | 🟡 cartera sombra, `SHADOW_TRADING` y Champion–Challenger de investigación con preregistro |
 | 11 | Dashboard profesional | 🟡 primera versión (Overview, Portfolio, Discovery, Peak Radar, Second Wave, Decisions, Capital, Risk, System) |
 | 12 | Despliegue permanente en paper trading | ⏳ requiere aprobación del propietario (coste) |
 | 13 | Validación económica y operativa | ⏳ |
 | 14 | Preparación técnica de un piloto real (deshabilitado) | ⏳ no iniciado; requisitos en `SECURITY.md` |
 
-## Siguiente bloque ejecutable (por prioridad)
+## Siguiente bloque ejecutable (por prioridad, tras la fase 2)
 
+0. **Muestra independiente para los challengers preregistrados** (`docs/research/PHASE2_SUMMARY.md` §5):
+   paper trading permanente del universo post-graduación (punto 1) o días de Launch Tape comprados con
+   autorización. No se debe probar ninguna hipótesis nueva sobre junio, julio o el 10 de octubre.
+0b. **Universo de la política de producción (≥ 24 h)**: buscar un dataset point-in-time que siga los
+   tokens más allá de 48 h, con recuentos de 24 h. Sin él, la política operativa sigue sin evaluar.
 1. **Despliegue permanente de paper trading** (fase 12). Checklist en `DEPLOYMENT.md`: unidades systemd,
    `aegis maintenance` diario con backup verificado, archivo y backup en discos distintos. Elegir VPS/Fly y Supabase. Sin esto no se
    acumula el dataset point-in-time real, que es la única evidencia sin look-ahead disponible hoy.
@@ -35,6 +40,18 @@
    posiciones calientes.
 
 ## Experimentos de investigación
+
+Fase 2 (E4–E10): resultados en `docs/research/PHASE2_RESULTS.md` y conclusiones en `PHASE2_SUMMARY.md`.
+
+| Id | Pregunta | Estado y resultado |
+|---|---|---|
+| E4 | ¿Se reproducen las estrategias de referencia con datos reales point-in-time y costes completos? | Hecho. El orden coincide (contexto > estricta + trailing > básica), pero todas pierden: 166,6 / 144,3 / 47,8 EUR sobre 200 en el corpus. En Launch Tape pierden todas |
+| E5 | ¿Reinversión completa frente a limitada? | Hecho. Con expectativa negativa, reciclar más pierde más: 190,6 (ritmo diario, sin reciclaje) > 169,4 (limitado) > 144–152 (completo) |
+| E6 | Ablación de factores y normalización del contexto | Hecho. Solo importan la liquidez ≥ 20.000 EUR y la ratio compras/ventas ≥ 1,75. El contexto bruto está contaminado por la cobertura (ρ = 0,83) |
+| E7 | Selección supervisada walk-forward | Hecho. AUC 0,48–0,56 fuera de muestra, sin valor económico |
+| E8 | Valor de continuación y agente | Hecho. AUC 0,60–0,69 (30 min), pero el agente pierde frente al Champion en todas las variantes |
+| E9 | Carteras A–I, bootstrap, Holm, costes, tickets, frecuencia | Hecho. Ninguna cartera supera al efectivo; el Champion empata con la selección aleatoria tras seguridad; nada es significativo tras Holm |
+| E10 | Recuperación de perdedoras y monetización | Hecho, dentro de muestra. Trailing 20 % y stop ×0,7 mejoran; los residuales destruyen valor |
 
 ### E3 — Reentrada durante una segunda explosión con residual abierto (segunda auditoría, P2)
 

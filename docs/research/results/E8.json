@@ -1,0 +1,646 @@
+{
+ "id": "E8",
+ "title": "Valor de continuaci\u00f3n y agente de decisi\u00f3n frente al Champion",
+ "aegis_version": "0.2.0",
+ "generated_at": "2026-11-26T18:39:48+00:00",
+ "datasets": {
+  "pumpfun_corpus": {
+   "repo": "Slinky21/Pumpfun_Memecoin_Corpus",
+   "revision": "13bec2bf3089d56d50c35e602616d1b993bb37f5"
+  },
+  "launchtape": {
+   "repo": "launchtape/solana-launch-tape",
+   "revision": "791aeee832cb9a10f55361f10972b33272c857f8"
+  }
+ },
+ "runtime_s": 224.2,
+ "data": {
+  "test_window": [
+   "2026-06-26T00:00:00+00:00",
+   "2026-07-15T00:00:00+00:00"
+  ],
+  "statistical_out_of_sample": {
+   "1800": [
+    {
+     "fold": "wf0",
+     "train_n": 2702,
+     "n": 4981,
+     "base_rate": 0.3461,
+     "auc": 0.6804,
+     "brier": 0.209,
+     "log_loss": 0.601,
+     "ece": 0.0567,
+     "reliability": [
+      {
+       "bin": 0,
+       "n": 996,
+       "mean_pred": 0.0973,
+       "observed": 0.0904
+      },
+      {
+       "bin": 1,
+       "n": 996,
+       "mean_pred": 0.1934,
+       "observed": 0.2651
+      },
+      {
+       "bin": 2,
+       "n": 997,
+       "mean_pred": 0.341,
+       "observed": 0.4132
+      },
+      {
+       "bin": 3,
+       "n": 995,
+       "mean_pred": 0.4876,
+       "observed": 0.4794
+      },
+      {
+       "bin": 4,
+       "n": 997,
+       "mean_pred": 0.5929,
+       "observed": 0.4824
+      }
+     ]
+    },
+    {
+     "fold": "wf1",
+     "train_n": 7025,
+     "n": 3708,
+     "base_rate": 0.308,
+     "auc": 0.6929,
+     "brier": 0.1944,
+     "log_loss": 0.5675,
+     "ece": 0.046,
+     "reliability": [
+      {
+       "bin": 0,
+       "n": 742,
+       "mean_pred": 0.0653,
+       "observed": 0.0714
+      },
+      {
+       "bin": 1,
+       "n": 741,
+       "mean_pred": 0.1953,
+       "observed": 0.2335
+      },
+      {
+       "bin": 2,
+       "n": 742,
+       "mean_pred": 0.3181,
+       "observed": 0.3625
+      },
+      {
+       "bin": 3,
+       "n": 741,
+       "mean_pred": 0.4558,
+       "observed": 0.3954
+      },
+      {
+       "bin": 4,
+       "n": 742,
+       "mean_pred": 0.5493,
+       "observed": 0.4771
+      }
+     ]
+    },
+    {
+     "fold": "wf2",
+     "train_n": 12034,
+     "n": 6373,
+     "base_rate": 0.3146,
+     "auc": 0.6574,
+     "brier": 0.2028,
+     "log_loss": 0.59,
+     "ece": 0.0309,
+     "reliability": [
+      {
+       "bin": 0,
+       "n": 1275,
+       "mean_pred": 0.1295,
+       "observed": 0.1169
+      },
+      {
+       "bin": 1,
+       "n": 1274,
+       "mean_pred": 0.2515,
+       "observed": 0.2739
+      },
+      {
+       "bin": 2,
+       "n": 1275,
+       "mean_pred": 0.3436,
+       "observed": 0.3388
+      },
+      {
+       "bin": 3,
+       "n": 1274,
+       "mean_pred": 0.4436,
+       "observed": 0.3689
+      },
+      {
+       "bin": 4,
+       "n": 1275,
+       "mean_pred": 0.505,
+       "observed": 0.4745
+      }
+     ]
+    },
+    {
+     "fold": "wf3",
+     "train_n": 14483,
+     "n": 8618,
+     "base_rate": 0.2965,
+     "auc": 0.6625,
+     "brier": 0.1961,
+     "log_loss": 0.5746,
+     "ece": 0.0362,
+     "reliability": [
+      {
+       "bin": 0,
+       "n": 1724,
+       "mean_pred": 0.0916,
+       "observed": 0.0916
+      },
+      {
+       "bin": 1,
+       "n": 1723,
+       "mean_pred": 0.2159,
+       "observed": 0.2403
+      },
+      {
+       "bin": 2,
+       "n": 1724,
+       "mean_pred": 0.309,
+       "observed": 0.3324
+      },
+      {
+       "bin": 3,
+       "n": 1723,
+       "mean_pred": 0.4163,
+       "observed": 0.4016
+      },
+      {
+       "bin": 4,
+       "n": 1724,
+       "mean_pred": 0.5106,
+       "observed": 0.4165
+      }
+     ]
+    },
+    {
+     "fold": "wf4",
+     "train_n": 23597,
+     "n": 2695,
+     "base_rate": 0.3763,
+     "auc": 0.6051,
+     "brier": 0.2276,
+     "log_loss": 0.6481,
+     "ece": 0.054,
+     "reliability": [
+      {
+       "bin": 0,
+       "n": 539,
+       "mean_pred": 0.1644,
+       "observed": 0.2263
+      },
+      {
+       "bin": 1,
+       "n": 539,
+       "mean_pred": 0.2822,
+       "observed": 0.3469
+      },
+      {
+       "bin": 2,
+       "n": 539,
+       "mean_pred": 0.3535,
+       "observed": 0.3803
+      },
+      {
+       "bin": 3,
+       "n": 539,
+       "mean_pred": 0.4384,
+       "observed": 0.4917
+      },
+      {
+       "bin": 4,
+       "n": 539,
+       "mean_pred": 0.4992,
+       "observed": 0.436
+      }
+     ]
+    }
+   ],
+   "3600": [
+    {
+     "fold": "wf0",
+     "train_n": 2670,
+     "n": 4965,
+     "base_rate": 0.3507,
+     "auc": 0.6175,
+     "brier": 0.2308,
+     "log_loss": 0.668,
+     "ece": 0.0889,
+     "reliability": [
+      {
+       "bin": 0,
+       "n": 993,
+       "mean_pred": 0.1292,
+       "observed": 0.1994
+      },
+      {
+       "bin": 1,
+       "n": 993,
+       "mean_pred": 0.2101,
+       "observed": 0.2961
+      },
+      {
+       "bin": 2,
+       "n": 993,
+       "mean_pred": 0.3009,
+       "observed": 0.3515
+      },
+      {
+       "bin": 3,
+       "n": 993,
+       "mean_pred": 0.4516,
+       "observed": 0.4642
+      },
+      {
+       "bin": 4,
+       "n": 993,
+       "mean_pred": 0.6277,
+       "observed": 0.4421
+      }
+     ]
+    },
+    {
+     "fold": "wf1",
+     "train_n": 6973,
+     "n": 3687,
+     "base_rate": 0.3214,
+     "auc": 0.6376,
+     "brier": 0.21,
+     "log_loss": 0.6057,
+     "ece": 0.0654,
+     "reliability": [
+      {
+       "bin": 0,
+       "n": 738,
+       "mean_pred": 0.113,
+       "observed": 0.1125
+      },
+      {
+       "bin": 1,
+       "n": 737,
+       "mean_pred": 0.2421,
+       "observed": 0.3148
+      },
+      {
+       "bin": 2,
+       "n": 737,
+       "mean_pred": 0.3152,
+       "observed": 0.3677
+      },
+      {
+       "bin": 3,
+       "n": 737,
+       "mean_pred": 0.4173,
+       "observed": 0.3501
+      },
+      {
+       "bin": 4,
+       "n": 738,
+       "mean_pred": 0.57,
+       "observed": 0.4621
+      }
+     ]
+    },
+    {
+     "fold": "wf2",
+     "train_n": 11952,
+     "n": 6366,
+     "base_rate": 0.3021,
+     "auc": 0.5978,
+     "brier": 0.2081,
+     "log_loss": 0.6102,
+     "ece": 0.0408,
+     "reliability": [
+      {
+       "bin": 0,
+       "n": 1273,
+       "mean_pred": 0.1707,
+       "observed": 0.1885
+      },
+      {
+       "bin": 1,
+       "n": 1273,
+       "mean_pred": 0.2857,
+       "observed": 0.2836
+      },
+      {
+       "bin": 2,
+       "n": 1274,
+       "mean_pred": 0.3254,
+       "observed": 0.2975
+      },
+      {
+       "bin": 3,
+       "n": 1272,
+       "mean_pred": 0.3922,
+       "observed": 0.3294
+      },
+      {
+       "bin": 4,
+       "n": 1274,
+       "mean_pred": 0.4802,
+       "observed": 0.4113
+      }
+     ]
+    },
+    {
+     "fold": "wf3",
+     "train_n": 14382,
+     "n": 8564,
+     "base_rate": 0.2898,
+     "auc": 0.5896,
+     "brier": 0.2057,
+     "log_loss": 0.6017,
+     "ece": 0.0567,
+     "reliability": [
+      {
+       "bin": 0,
+       "n": 1713,
+       "mean_pred": 0.1367,
+       "observed": 0.1646
+      },
+      {
+       "bin": 1,
+       "n": 1713,
+       "mean_pred": 0.2611,
+       "observed": 0.2574
+      },
+      {
+       "bin": 2,
+       "n": 1712,
+       "mean_pred": 0.3054,
+       "observed": 0.3388
+      },
+      {
+       "bin": 3,
+       "n": 1713,
+       "mean_pred": 0.3803,
+       "observed": 0.3433
+      },
+      {
+       "bin": 4,
+       "n": 1713,
+       "mean_pred": 0.4816,
+       "observed": 0.345
+      }
+     ]
+    },
+    {
+     "fold": "wf4",
+     "train_n": 23480,
+     "n": 2578,
+     "base_rate": 0.3445,
+     "auc": 0.5366,
+     "brier": 0.2291,
+     "log_loss": 0.6532,
+     "ece": 0.0571,
+     "reliability": [
+      {
+       "bin": 0,
+       "n": 516,
+       "mean_pred": 0.1967,
+       "observed": 0.2907
+      },
+      {
+       "bin": 1,
+       "n": 515,
+       "mean_pred": 0.2908,
+       "observed": 0.332
+      },
+      {
+       "bin": 2,
+       "n": 516,
+       "mean_pred": 0.3276,
+       "observed": 0.3372
+      },
+      {
+       "bin": 3,
+       "n": 515,
+       "mean_pred": 0.3949,
+       "observed": 0.4019
+      },
+      {
+       "bin": 4,
+       "n": 516,
+       "mean_pred": 0.4673,
+       "observed": 0.3605
+      }
+     ]
+    }
+   ]
+  },
+  "samples": {
+   "1800": 30823,
+   "3600": 30594
+  },
+  "economic": [
+   {
+    "label": "champion strict+trailing",
+    "contributions_eur": 200.0,
+    "net_worth_liquidable_eur": 154.9505,
+    "net_worth_mark_to_last_eur": 160.9718,
+    "net_worth_censored_zero_eur": 154.8576,
+    "tokens_signalled": 389,
+    "buys": 389,
+    "sells": 267,
+    "win_rate_closed": 0.5206,
+    "median_multiple_closed": 1.006,
+    "mean_multiple_closed": 1.2998,
+    "peak_ge_x2": 69,
+    "peak_ge_x2_realised_ge_x2": 27,
+    "median_peak_capture": 0.6685,
+    "cash_idle_share": 0.7282,
+    "pool_fees_eur": 7.5913,
+    "network_fees_eur": 4.4741,
+    "censored_open_positions": 122,
+    "reconciliation_ok": true,
+    "mean_return_per_ticket": -0.0921,
+    "fingerprint": "a943df552ba5"
+   },
+   {
+    "label": "strict+hold",
+    "contributions_eur": 200.0,
+    "net_worth_liquidable_eur": 18.8908,
+    "net_worth_mark_to_last_eur": 103.3936,
+    "net_worth_censored_zero_eur": 19.0305,
+    "tokens_signalled": 389,
+    "buys": 200,
+    "sells": 0,
+    "win_rate_closed": null,
+    "median_multiple_closed": null,
+    "mean_multiple_closed": null,
+    "peak_ge_x2": 0,
+    "peak_ge_x2_realised_ge_x2": 0,
+    "median_peak_capture": 0.0037,
+    "cash_idle_share": 0.2146,
+    "pool_fees_eur": 2.0389,
+    "network_fees_eur": 1.3326,
+    "censored_open_positions": 200,
+    "reconciliation_ok": true,
+    "mean_return_per_ticket": -0.5782,
+    "fingerprint": "024a88db4d81"
+   },
+   {
+    "label": "strict+recovery x2 + 10% residual + trailing",
+    "contributions_eur": 200.0,
+    "net_worth_liquidable_eur": 121.3938,
+    "net_worth_mark_to_last_eur": 137.4335,
+    "net_worth_censored_zero_eur": 120.6087,
+    "tokens_signalled": 389,
+    "buys": 389,
+    "sells": 335,
+    "win_rate_closed": null,
+    "median_multiple_closed": null,
+    "mean_multiple_closed": null,
+    "peak_ge_x2": 0,
+    "peak_ge_x2_realised_ge_x2": 0,
+    "median_peak_capture": 0.5621,
+    "cash_idle_share": 0.6445,
+    "pool_fees_eur": 7.1849,
+    "network_fees_eur": 4.9301,
+    "censored_open_positions": 389,
+    "reconciliation_ok": true,
+    "mean_return_per_ticket": -0.2248,
+    "fingerprint": "1292d708cae5"
+   },
+   {
+    "label": "agent h=1h",
+    "contributions_eur": 200.0,
+    "net_worth_liquidable_eur": 136.8433,
+    "net_worth_mark_to_last_eur": 139.2128,
+    "net_worth_censored_zero_eur": 136.7947,
+    "tokens_signalled": 389,
+    "buys": 389,
+    "sells": 496,
+    "win_rate_closed": 0.5367,
+    "median_multiple_closed": 1.0347,
+    "mean_multiple_closed": 1.1679,
+    "peak_ge_x2": 23,
+    "peak_ge_x2_realised_ge_x2": 15,
+    "median_peak_capture": 0.5595,
+    "cash_idle_share": 0.7513,
+    "pool_fees_eur": 7.3534,
+    "network_fees_eur": 5.9937,
+    "censored_open_positions": 171,
+    "reconciliation_ok": true,
+    "mean_return_per_ticket": -0.1848,
+    "fingerprint": "a943df552ba5",
+    "agent_actions": {
+     "HOLD": 20226,
+     "PARTIAL": 293,
+     "SELL": 213,
+     "DELEGATED": 142
+    }
+   },
+   {
+    "label": "agent h=1h no partial",
+    "contributions_eur": 200.0,
+    "net_worth_liquidable_eur": 127.8998,
+    "net_worth_mark_to_last_eur": 132.1564,
+    "net_worth_censored_zero_eur": 127.8573,
+    "tokens_signalled": 389,
+    "buys": 389,
+    "sells": 261,
+    "win_rate_closed": 0.5057,
+    "median_multiple_closed": 1.0135,
+    "mean_multiple_closed": 1.2038,
+    "peak_ge_x2": 44,
+    "peak_ge_x2_realised_ge_x2": 30,
+    "median_peak_capture": 0.6564,
+    "cash_idle_share": 0.6989,
+    "pool_fees_eur": 7.2396,
+    "network_fees_eur": 4.4222,
+    "censored_open_positions": 128,
+    "reconciliation_ok": true,
+    "mean_return_per_ticket": -0.1812,
+    "fingerprint": "a943df552ba5",
+    "agent_actions": {
+     "HOLD": 18037,
+     "SELL": 257,
+     "DELEGATED": 124
+    }
+   },
+   {
+    "label": "agent h=30m",
+    "contributions_eur": 200.0,
+    "net_worth_liquidable_eur": 112.1389,
+    "net_worth_mark_to_last_eur": 115.0934,
+    "net_worth_censored_zero_eur": 111.7682,
+    "tokens_signalled": 389,
+    "buys": 389,
+    "sells": 468,
+    "win_rate_closed": 0.4599,
+    "median_multiple_closed": 0.9757,
+    "mean_multiple_closed": 1.1527,
+    "peak_ge_x2": 29,
+    "peak_ge_x2_realised_ge_x2": 12,
+    "median_peak_capture": 0.46,
+    "cash_idle_share": 0.691,
+    "pool_fees_eur": 7.0378,
+    "network_fees_eur": 5.7874,
+    "censored_open_positions": 202,
+    "reconciliation_ok": true,
+    "mean_return_per_ticket": -0.2591,
+    "fingerprint": "a943df552ba5",
+    "agent_actions": {
+     "HOLD": 24814,
+     "PARTIAL": 285,
+     "SELL": 184,
+     "DELEGATED": 190
+    }
+   },
+   {
+    "label": "agent h=1h strict thresholds",
+    "contributions_eur": 200.0,
+    "net_worth_liquidable_eur": 79.5315,
+    "net_worth_mark_to_last_eur": 91.0488,
+    "net_worth_censored_zero_eur": 78.7041,
+    "tokens_signalled": 389,
+    "buys": 389,
+    "sells": 329,
+    "win_rate_closed": 0.6484,
+    "median_multiple_closed": 1.135,
+    "mean_multiple_closed": 1.5077,
+    "peak_ge_x2": 38,
+    "peak_ge_x2_realised_ge_x2": 30,
+    "median_peak_capture": 0.3211,
+    "cash_idle_share": 0.5348,
+    "pool_fees_eur": 6.6896,
+    "network_fees_eur": 4.8557,
+    "censored_open_positions": 261,
+    "reconciliation_ok": true,
+    "mean_return_per_ticket": -0.3106,
+    "fingerprint": "a943df552ba5",
+    "agent_actions": {
+     "HOLD": 29669,
+     "PARTIAL": 428,
+     "SELL": 122,
+     "DELEGATED": 168
+    }
+   }
+  ],
+  "counterfactual": {
+   "closed": 267,
+   "with_post_exit_data": 267,
+   "median_best_after_exit_vs_exit_price": 1.5063,
+   "share_doubling_after_exit": 0.3146,
+   "note": "gross price path after the exit (no costs); retrospective, never a decision input"
+  }
+ }
+}

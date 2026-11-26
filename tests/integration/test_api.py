@@ -56,3 +56,25 @@ def test_control_endpoints_require_token(tmp_path):
     assert r.status_code == 200
     flags = {f["key"]: f["value"] for f in client2.get("/risk").json()["flags"]}
     assert flags["kill_switch"] == "on"
+
+
+def test_research_experiments_endpoint_serves_derived_results_only(tmp_path):
+    import json
+
+    from aegis.storage.db import create_all, make_engine
+    res = tmp_path / "results"
+    res.mkdir()
+    (res / "E4.json").write_text(json.dumps({"id": "E4", "title": "t", "generated_at": "2026-11-26T00:00:00+00:00",
+                                             "aegis_version": "0.3.0", "datasets": {"x": {"revision": "r"}},
+                                             "data": {"reference": [{"label": "strict+trailing", "buys": 3,
+                                                                     "net_worth_liquidable_eur": 90.0,
+                                                                     "raw_trades": ["never exposed"]}]}}))
+    eng = make_engine(f"sqlite:///{tmp_path}/e.sqlite")
+    create_all(eng)
+    client = TestClient(create_app(eng, Settings(research_results_dir=res)))
+    body = client.get("/research/experiments").json()
+    assert body["experiments"][0]["rows"] == [{**dict.fromkeys(body["experiments"][0]["rows"][0]), "label": "strict+trailing",
+                                               "buys": 3, "net_worth_liquidable_eur": 90.0}]
+    assert "raw_trades" not in body["experiments"][0]["rows"][0]
+    empty = TestClient(create_app(eng, Settings(research_results_dir=tmp_path / "none"))).get("/research/experiments")
+    assert empty.json()["experiments"] == []

@@ -9,10 +9,15 @@ microposiciones de ~1 EUR, con monetización y reciclaje del capital.
 > **no está demostrada**: ver [`docs/STATUS.md`](docs/STATUS.md) y
 > [`docs/BACKTEST_METHODOLOGY.md`](docs/BACKTEST_METHODOLOGY.md).
 
-## Estado (v0.2.0)
+## Estado (v0.3.0)
 
 Funcional y probado en esta versión: datos reales de mercado → seguridad → indicadores → decisiones →
 ejecución simulada con costes reales de Solana → contabilidad de partida doble → conciliación → API.
+
+La fase 2 añade datasets históricos con procedencia verificada, replay del worker sobre ellos, un
+simulador histórico y los experimentos E4–E10. **Con costes realistas, ninguna política probada supera a
+no invertir** en los periodos disponibles: ver
+[`docs/research/PHASE2_SUMMARY.md`](docs/research/PHASE2_SUMMARY.md).
 Lo pendiente está en [`docs/ROADMAP.md`](docs/ROADMAP.md). El registro de trabajo para continuar en
 nuevas sesiones está en [`docs/STATUS.md`](docs/STATUS.md).
 
@@ -82,6 +87,24 @@ puede detenerse en cualquier momento (Ctrl+C / SIGTERM) sin perder estado.
 .venv/bin/aegis kill-switch on --reason "pausa manual"
 ```
 
+Investigación histórica (fase 2; los datos se descargan a `var/datasets` y nunca se suben al repo):
+
+```bash
+.venv/bin/aegis datasets fetch
+```
+
+```bash
+.venv/bin/aegis datasets verify
+```
+
+```bash
+.venv/bin/aegis backtest --dataset pumpfun_corpus --preset strict+trailing --start 2026-06-19 --end 2026-07-15
+```
+
+```bash
+.venv/bin/aegis research phase2
+```
+
 Otros comandos:
 
 - `aegis export --out exports/`.
@@ -124,6 +147,9 @@ Detalle de la estrategia de pruebas y de los 30 casos obligatorios en [`docs/TES
 | [docs/BACKTEST_METHODOLOGY.md](docs/BACKTEST_METHODOLOGY.md) | Sesgos, limitaciones del universo histórico |
 | [docs/FEATURE_CATALOG.md](docs/FEATURE_CATALOG.md) | Indicadores e índices propietarios |
 | [docs/MODEL_REGISTRY.md](docs/MODEL_REGISTRY.md) | Modelos, Champion–Challenger |
+| [docs/DATASETS.md](docs/DATASETS.md) | Datasets históricos: revisiones, hashes, licencias, cobertura |
+| [docs/research/PHASE2_SUMMARY.md](docs/research/PHASE2_SUMMARY.md) | Conclusiones de la fase 2 |
+| [docs/research/PHASE2_RESULTS.md](docs/research/PHASE2_RESULTS.md) | Resultados reproducibles E4–E10 |
 | [docs/DATA_DICTIONARY.md](docs/DATA_DICTIONARY.md) | Modelo de datos |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Entornos y despliegue |
 | [docs/TESTING.md](docs/TESTING.md) | Pruebas y criterios de aceptación |

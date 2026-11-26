@@ -1,5 +1,54 @@
 # Changelog
 
+## 0.3.0 — 2026-11-26 — Fase 2: base empírica, liquidez, inteligencia y validación
+
+### Añadido
+
+- **Base empírica (bloque A)**:
+  - `aegis.history`: registro de datasets con revisión fijada, SHA-256 por fichero, licencia y
+    procedencia (`aegis datasets list|fetch|verify|coverage`).
+  - Almacén point-in-time que separa observaciones contemporáneas de resultados retrospectivos.
+  - Adaptadores para Pumpfun Corpus y Launch Tape.
+  - Estructuras de mercado: CPMM exacto, sin ejecución para DLMM, CLMM, DAMM ni desconocidos.
+  - Comisión de PumpSwap medida por tramos.
+  - `HistoricalGateway` para el worker de producción.
+  - Estudio de cobertura y latencia.
+- **Simulador histórico rápido** (`aegis backtest`): usa el motor de ejecución simulada y el libro de
+  producción. Incluye las estrategias de referencia del propietario como configuración
+  (`StrategyConfig.postgrad_entry` y `postgrad_exit`).
+- **Liquidez (bloque B)**: `capital.recycling` (`none`, `limited`, `full`, `contextual`) y
+  `capital.investment_pacing`, en modo experimental (los valores por defecto no cambian). El simulador
+  mide cada categoría de efectivo, el Capital Turnover, la Recycling Ratio y la latencia de reinversión.
+- **Inteligencia (bloques C y D)**:
+  - Atributos point-in-time y etiquetas con costes.
+  - Regresión logística L2 y calibración isotónica en numpy.
+  - Conjuntos bootstrap por token.
+  - Agente de valor de continuación que se abstiene y delega en el Champion.
+  - Carteras A–I.
+- **Validación (bloque E)**: walk-forward con purga y embargo, bootstrap circular por bloques,
+  comparaciones pareadas, Holm–Bonferroni y sensibilidad a costes, deslizamiento, tickets, latencia y
+  frecuencia.
+- `aegis research phase2`: experimentos E4–E10 reproducibles. Los resultados derivados se guardan en
+  `docs/research/` y se sirven en `/research/experiments` y en la pantalla Laboratorio del dashboard.
+- Documentación: `docs/DATASETS.md` y los ADR 18–23.
+
+### Corregido (encontrado en la fase 2)
+
+- **Financiación por categoría de efectivo**: cada compra se pagaba «reciclado primero» con cualquier
+  efectivo disponible. Así el tope diario de reciclado, y el modo sin reciclaje, no limitaban la cuenta
+  que pagaba, y el libro atribuía el gasto a la categoría equivocada. Ahora el worker y el simulador
+  pasan a la ejecución el presupuesto concedido por cuenta (`allowance`).
+- El tope de presupuesto (saldo × 0,10) tenía más de 12 decimales y llegaba sin cuantizar al libro, que
+  lo rechazaba (`LedgerError`) con el reciclaje limitado. Ahora se redondea a la baja a la escala del
+  libro.
+- Las bases de un replay histórico quedan marcadas `data_mode=historical`. Los supuestos de seguridad
+  históricos limitan la evidencia a `INDICATOR`; nunca aparecen como `CONFIRMED`.
+
+### Hallazgos que no cambian la política operativa (ver STATUS)
+
+- La comisión real de PumpSwap es de ~1,0–1,26 % por lado, frente a los 30 pb supuestos.
+- Ninguna estrategia probada supera al efectivo con costes realistas en el periodo explorado.
+
 ## 0.2.3 — 2026-11-26 — segunda auditoría independiente
 
 ### Corregido (reproducido antes de corregir)

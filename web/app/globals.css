@@ -171,3 +171,6 @@ button { cursor: pointer; }
   .hero-figure { font-size: 32px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* Phase 2: section headings inside a page */
+h2.section { font-size: 15px; font-weight: 600; margin: 24px 0 10px; }

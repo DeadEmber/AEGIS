@@ -26,6 +26,13 @@ export function pct(v: unknown, digits = 1, fromFraction = true): string {
   return `${x > 0 ? "+" : ""}${x.toLocaleString("es-ES", { maximumFractionDigits: digits, minimumFractionDigits: digits })} %`;
 }
 
+/** Unsigned share of a whole (win rate, idle cash): never prefixed with "+". */
+export function share(v: unknown, digits = 1): string {
+  const n = num(v);
+  if (n === null) return "—";
+  return `${(n * 100).toLocaleString("es-ES", { maximumFractionDigits: digits, minimumFractionDigits: digits })} %`;
+}
+
 export function mult(v: unknown): string {
   const n = num(v);
   if (n === null) return "—";
