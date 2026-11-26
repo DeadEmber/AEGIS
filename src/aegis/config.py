@@ -171,6 +171,8 @@ class ExecutionConfig(BaseModel):
 
 
 class ExitConfig(BaseModel):
+    # "aegis" = full exit policy; "hold" = never sell (pure buy-and-hold baseline for comparisons)
+    policy: str = Field(default="aegis", pattern="^(aegis|hold)$")
     # Net liquidation multiple (liquidation value / remaining cost basis) to recover initial capital.
     capital_recovery_multiple: Decimal = Decimal("2.0")
     residual_min_fraction: Decimal = Decimal("0.10")

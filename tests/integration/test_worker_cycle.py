@@ -173,3 +173,37 @@ def test_simulated_and_live_data_never_mixed(tmp_path):
         repo.set_flag(c, "data_mode", "live", clock.now(), "test")
     with pytest.raises(RuntimeError, match="refusing to mix"):
         _worker(url, clock)
+
+
+def test_retention_never_touches_financial_records(tmp_path):
+    from aegis.storage.retention import RetentionPolicy, prune
+
+    clock = ManualClock(START)
+    w, _ = _worker(f"sqlite:///{tmp_path}/p.sqlite", clock)
+    _run(w, clock, hours=12)
+    with w.engine.begin() as c:
+        before = {t: repo.count(c, getattr(s, t)) for t in ("ledger_postings", "orders", "executions", "position_lots")}
+        snaps = repo.count(c, s.market_snapshots)
+        out = prune(c, clock.now(), RetentionPolicy(snapshot_full_days=0, feature_days=0, trivial_decision_days=0))
+        after = {t: repo.count(c, getattr(s, t)) for t in before}
+        assert before == after
+        assert out["market_snapshots"] > 0 and repo.count(c, s.market_snapshots) < snaps
+        assert w.portfolio.reconcile(c).ok
+
+
+def test_strategy_comparison_same_conditions():  # case 26
+    from aegis.research.compare import compare, hold_only, naive_stop
+
+    def gw(clock):
+        return ScriptedGateway(script=make_script(START), clock=clock.now, unsellable={TOKENS["honeypot"]},
+                               mint_overrides={TOKENS["frozen"]: frozen_mint(START)})
+
+    base = _cfg()
+    res = {r["strategy"]: r for r in compare([base, hold_only(base), naive_stop(base)], gw, START, hours=60)}
+    assert set(res) == {"aegis-baseline", "buy_and_hold", "stop_loss_0.7", "cash"}
+    for name in ("aegis-baseline", "buy_and_hold", "stop_loss_0.7"):
+        assert res[name]["always_reconciled"] and res[name]["buys"] == res["aegis-baseline"]["buys"]
+    # identical entries, different exits => differences come only from exit policy
+    assert res["buy_and_hold"]["sells"] == 0 and res["aegis-baseline"]["sells"] > 0
+    # on THIS simulated path (rocket x10 then -85%) monetisation beats holding; not a general claim
+    assert res["aegis-baseline"]["objective_eur"] > res["buy_and_hold"]["objective_eur"]

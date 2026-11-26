@@ -1,0 +1,10 @@
+.venv
+.git
+var
+web/node_modules
+web/.next
+**/__pycache__
+.pytest_cache
+.ruff_cache
+.hypothesis
+.env

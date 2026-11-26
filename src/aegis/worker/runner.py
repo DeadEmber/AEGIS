@@ -426,10 +426,16 @@ class Worker:
                     base_price_usd=ti.obs.price_usd or ZERO, peak_price_usd=ti.obs.price_usd,
                     peak_liquidity_usd=ti.obs.liquidity_usd))
         c.execute(update(s.tokens).where(s.tokens.c.id == ti.token_id).values(**vals))
-        c.execute(insert(s.features).values(token_id=ti.token_id, as_of=ti.features.as_of,
-                                            feature_set_version=ti.features.version,
-                                            values={k: round(v, 8) for k, v in ti.features.values.items()},
-                                            missing=ti.features.missing))
+        # Storage budget: persist feature vectors only when they matter (held, eligible, state change) or hourly.
+        last = c.execute(select(s.features.c.as_of).where(s.features.c.token_id == ti.token_id)
+                         .order_by(s.features.c.as_of.desc()).limit(1)).first()
+        held = self.portfolio.open_position(c, ti.token_id) is not None
+        due = last is None or ti.features.as_of - last.as_of >= dt.timedelta(hours=1)
+        if held or ti.eligibility.eligible or row.market_state != ti.state or due:
+            c.execute(insert(s.features).values(token_id=ti.token_id, as_of=ti.features.as_of,
+                                                feature_set_version=ti.features.version,
+                                                values={k: round(v, 8) for k, v in ti.features.values.items()},
+                                                missing=sorted(ti.features.missing)))
 
     # ------------------------------------------------------------------ valuation
     def _liquidation(self, qty: Decimal, price_eur: Decimal | None, liq_eur: Decimal | None) -> Decimal | None:

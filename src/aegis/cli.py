@@ -7,6 +7,7 @@
     aegis status | reconcile         print portfolio state / reconciliation report
     aegis export --out DIR           CSV export of the main tables
     aegis api [--port 8000]          serve the dashboard API
+    aegis prune                      apply data retention policy (never touches the ledger)
     aegis kill-switch on|off --reason TEXT
 """
 
@@ -192,6 +193,15 @@ def cmd_api(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_prune(args: argparse.Namespace) -> int:
+    from aegis.storage.retention import prune
+
+    settings, _, _ = _load(args)
+    with make_engine(settings.database_url).begin() as c:
+        _print(prune(c, dt.datetime.now(UTC)))
+    return 0
+
+
 def cmd_kill(args: argparse.Namespace) -> int:
     settings, _, _ = _load(args)
     with make_engine(settings.database_url).begin() as c:
@@ -224,6 +234,7 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--host", default="127.0.0.1")
     a.add_argument("--port", type=int, default=8000)
     a.set_defaults(fn=cmd_api)
+    sub.add_parser("prune", help="apply the retention policy").set_defaults(fn=cmd_prune)
     k = sub.add_parser("kill-switch")
     k.add_argument("state", choices=["on", "off"])
     k.add_argument("--reason", required=True)

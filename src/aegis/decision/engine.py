@@ -125,6 +125,8 @@ class DecisionEngine:
                 priority: float = 0.0) -> Decision:
             return Decision(action, p.token_id, reasons, sc, p.position_id, None, fraction, method, priority).finalize(inputs)
 
+        if ex.policy == "hold":
+            return dec(Action.HOLD, ["exit policy 'hold' (comparison baseline)"])
         if p.data_stale or p.price_eur is None:
             return dec(Action.HOLD, ["no fresh market data: no action on unknowns"], priority=0.5)
         sellable = p.liquidation_eur is not None and p.liquidation_eur >= ex.min_sale_eur
