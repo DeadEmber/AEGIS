@@ -7,7 +7,22 @@
 | `state` | `state-0.2` | reglas | operativo | n/a | estados de mercado |
 | `decision` | `decision-0.2` | reglas deterministas | operativo | n/a | acciones |
 
-No hay modelos entrenados. La tabla `model_versions` está preparada.
+### Fase 2: modelos experimentales (investigación y modo sombra; **ninguno operativo**)
+
+| Nombre | Versión | Tipo | Datos (revisión) | Etiqueta | Estado | ¿Probabilidad calibrada? |
+|---|---|---|---|---|---|---|
+| `entry-logreg` | `logreg-l2-0.1`, conjunto bootstrap de 5 por token | regresión logística L2 sobre 25 atributos point-in-time (`research.learning.ENTRY_FEATURES`) | `pumpfun_corpus@13bec2bf`, 19/06–15/07/2026 | ticket de 1 EUR con la salida Champion (trailing 30 %) y costes completos: múltiplo de caja > 1 | **challenger en investigación** | **no** (ver E7: ECE y fiabilidad por pliegue) |
+| `continuation-logreg-h1h` | `logreg-l2-0.1`, conjunto bootstrap de 5 | regresión logística sobre 13 atributos del estado de la posición (`POSITION_FEATURES`) | igual | valor liquidable a +1 h > valor actual (horizonte ≥ resolución de los datos) | **challenger en investigación** (agente de decisión, E8) | **no** |
+| `continuation-logreg-h30m` | igual | igual | igual | igual a +30 min | investigación | no |
+
+Se entrenan walk-forward con pliegues de 4 días, ventana expansiva desde 7 días y embargo de 48 h, que
+es igual al seguimiento máximo de la etiqueta (`research.validation`). Las observaciones del mismo token
+nunca cruzan entrenamiento y prueba, porque se reparten por instante de decisión y se purgan las
+etiquetas solapadas. Sus salidas se llaman `p_model` y **no se presentan como probabilidad**. Los
+resultados por pliegue (AUC, Brier, log loss, ECE, fiabilidad) y la evaluación económica están en
+`docs/research/PHASE2_RESULTS.md`. Ninguno cumple todavía los criterios de promoción de abajo.
+La tabla `model_versions` de la base operativa sigue vacía: ningún camino de producción carga estos
+modelos.
 
 ## Proceso Champion–Challenger (obligatorio para sustituir el baseline)
 

@@ -103,6 +103,40 @@ AEGIS_TEST_POSTGRES_URL=postgresql+psycopg://user@host/db .venv/bin/pytest tests
 | Contrafactual de ventas parciales | `test_partial_sales_are_tracked_as_units_sold_counterfactuals`, `test_units_sold_shadow_measures_forgone_upside` |
 | Reentrada con residual (E3) | `test_residual_reentry_signal_recorded_not_bought` |
 
+## Fase 2: base empírica, liquidez, inteligencia y validación
+
+Las pruebas usan almacenes **sintéticos** (`tests/history_synth.py`): la licencia de Launch Tape prohíbe
+subir sus datos, y el corpus es grande. Los adaptadores se prueban con ficheros Parquet sintéticos que
+tienen el esquema real.
+
+| Requisito | Prueba(s) |
+|---|---|
+| CPMM exacto, reserva virtual, venta acotada por la reserva real | `test_cpmm_swap_formula_fee_and_virtual_reserve`, `test_sell_never_extracts_more_than_the_real_reserve` |
+| Sin ejecución CPMM para DLMM/CLMM/DAMM/curva/desconocido | `test_no_cpmm_fill_for_other_structures`, `test_dex_classification_never_assumes_cpmm_for_ambiguous_dexes`, `test_unsupported_market_is_never_filled` |
+| Comisión medida por tramos; capitalización desconocida → tramo más caro | `test_measured_fee_schedule_tiers_and_unknown_cap_takes_worst_tier` |
+| Point-in-time: vista sin futuro, estáticos con `known_at`, sin acceso a resultados | `test_market_view_refuses_future_observations_and_hides_unknown_static`, `test_entry_features_are_point_in_time` |
+| Desconocido ≠ cero ≠ aprobado | `test_pool_observation_mapping_keeps_unknowns_as_none`, `test_entry_filters_treat_unknown_as_failure` |
+| Tipo BCE conocido solo tras su publicación | `test_ecb_rate_is_only_known_after_publication`, `test_bundled_ecb_table_covers_the_research_periods` |
+| Revisiones y hashes fijados; descarga verificada; fichero alterado rechazado | `test_registry_pins_revisions_and_hashes`, `test_verify_detects_missing_and_tampered_files`, `test_fetch_rejects_a_changed_upstream_file` |
+| Licencia: ningún fichero de Launch Tape en el repositorio | `test_no_non_redistributable_dataset_file_is_committed` |
+| Adaptador del corpus: centinelas, curva no negociable, concentración sospechosa → desconocida, columnas retrospectivas excluidas, huecos | `test_pumpfun_adapter_separates_markets_outcomes_and_flags` |
+| Adaptador de Launch Tape: ventanas solo con trades ya impresos, reserva virtual arrastrada, recuentos de 24 h exactos, huecos del feed, censura | `test_launchtape_adapter_point_in_time_windows_and_exact_24h_counts` |
+| Simulador: todo por el libro, conciliado, determinista, censura informada | `test_backtest_books_everything_through_the_ledger_and_reconciles`, `test_backtest_is_deterministic`, `test_hold_exit_never_sells_and_reports_censoring` |
+| Reciclaje `none` frente a `full` tras la liquidación diferida | `test_recycling_none_leaves_proceeds_idle_full_recycles_after_settlement` |
+| **Defecto corregido**: el reciclado pagaba compras por encima de su tope | `test_buy_draws_only_the_budgeted_allowance_per_cash_account` |
+| **Defecto corregido**: tope de presupuesto con más de 12 decimales → asiento no cuantizado | `test_allowance_with_excess_precision_is_rounded_down_to_the_ledger_scale` |
+| Contexto bruto y normalizado por cobertura | `test_context_filters_raw_and_coverage_normalised` |
+| Worker de producción sobre histórico: seguridad desconocida bloquea, evidencia limitada, sin mezcla de datos, gateway point-in-time | `tests/integration/test_historical_replay.py` |
+| Modelos: señal, preprocesado solo con entrenamiento, AUC con empates, isotónica monótona, fiabilidad | `tests/unit/test_learning.py` |
+| Walk-forward ordenado, purga y embargo; bootstrap por bloques; Holm | `test_walk_forward_folds_are_ordered_and_purged`, `test_block_bootstrap_and_holm` |
+| Etiquetas con costes y censura | `test_samples_labels_use_costs_and_mark_censoring` |
+| El agente se abstiene y delega en el Champion sin modelo o con incertidumbre | `test_agent_abstains_and_delegates_without_a_model_or_when_uncertain`, `test_model_entry_abstains_outside_trained_periods` |
+| Carteras aleatorias deterministas; segunda oportunidad solo tras salida | `test_random_entry_is_deterministic_and_second_chance_needs_an_exit` |
+
+Los experimentos con los datos reales (`aegis research phase2`) no se ejecutan en CI, porque los datos
+no están en el repositorio. Sus resultados (solo cifras derivadas) quedan versionados en
+`docs/research/`.
+
 ## Pendientes de prueba
 
 - Pruebas de rendimiento: ciclos con más de 5.000 tokens y tiempo por fase.
