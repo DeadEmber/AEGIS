@@ -75,7 +75,7 @@ def evaluate(x: StateInputs) -> StateDecision:
         return d(MarketState.UNKNOWN, "market data unavailable or stale (not evidence of failure)")
     f, sc = x.features, x.scores
     g = f.get
-    ret_h6, ret_h24, ret_h1 = g("ret_h6"), g("ret_h24"), g("ret_h1")
+    ret_h6, ret_h24 = g("ret_h6"), g("ret_h24")
     dd24, ddath, mlow = g("drawdown_from_peak_h24"), g("drawdown_from_ath"), g("multiple_from_low_since_ath")
     bs1, acc = g("buyer_share_h1"), g("acceleration_short")
     prs = sc.prs.value if sc else None

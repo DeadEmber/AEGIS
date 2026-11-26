@@ -12,6 +12,7 @@ observed the token — flagged by `history_hours`).
 from __future__ import annotations
 
 import datetime as dt
+import itertools
 import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -70,7 +71,7 @@ class FeatureVector:
 
 
 REGISTRY: dict[str, FeatureSpec] = {}
-_COMPUTE: dict[str, Callable[[FeatureContext], float | None | tuple[None, str]]] = {}
+_COMPUTE: dict[str, Callable[[FeatureContext], float | tuple[None, str] | None]] = {}
 
 
 def feature(name: str, unit: str, horizon: str, source: str, definition: str, validity: str, group: str):
@@ -157,7 +158,7 @@ def _rv(ctx: FeatureContext) -> float:
     if len(pts) < 4:
         raise Missing("insufficient_history")
     acc = []
-    for a, b in zip(pts, pts[1:], strict=False):
+    for a, b in itertools.pairwise(pts):
         dt_h = (b.observed_at - a.observed_at).total_seconds() / 3600
         if dt_h <= 0:
             continue
@@ -355,6 +356,19 @@ def _t10(ctx: FeatureContext) -> float:
          "profile", "wallets")
 def _org(ctx: FeatureContext) -> float:
     return _f(ctx.profile.organic_score if ctx.profile else None, "profile_missing")
+
+
+@feature("organic_volume_share_h24", "fraction", "h24", "Jupiter stats24h",
+         "buyOrganicVolume / buyVolume (Jupiter proprietary organic classifier)", "profile with stats24h", "wallets")
+def _ovs(ctx: FeatureContext) -> float:
+    from aegis.security.engine import organic_volume_share
+
+    if ctx.profile is None:
+        raise Missing("profile_missing")
+    v = organic_volume_share(ctx.profile)
+    if v is None:
+        raise Missing("stats_missing")
+    return float(v)
 
 
 def compute(ctx: FeatureContext) -> FeatureVector:

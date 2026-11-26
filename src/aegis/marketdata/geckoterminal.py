@@ -121,7 +121,8 @@ def _validate(payload: Any) -> None:
         status = (payload or {}).get("status", {}) if isinstance(payload, dict) else {}
         if status.get("error_code") == 429:
             raise SourceError(SOURCE, "rate_limited", "429 in body", 429)
-        raise SourceError(SOURCE, "parse", f"unexpected payload keys: {list(payload)[:5] if isinstance(payload, dict) else type(payload)}")
+        shape = list(payload)[:5] if isinstance(payload, dict) else type(payload).__name__
+        raise SourceError(SOURCE, "parse", f"unexpected payload shape: {shape}")
 
 
 class GeckoTerminalClient:

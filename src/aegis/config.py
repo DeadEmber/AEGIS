@@ -185,6 +185,14 @@ class ExitConfig(BaseModel):
     min_sale_eur: Decimal = Decimal("0.10")
     dust_close_after_days: int = 7
     reevaluate_minutes_when_hot: int = 2
+    # Smallest fraction worth selling (avoids dust orders); residual positions only exit on critical events.
+    min_sell_fraction: Decimal = Decimal("0.05")
+    # Recover remaining capital from structurally deteriorating losers (collapse / liquidity drain + sellers).
+    deterioration_exit: bool = True
+    deterioration_liquidity_drop_h24: Decimal = Decimal("0.50")
+    deterioration_max_buyer_share_h24: Decimal = Decimal("0.45")
+    # Optional naive stop-loss on net liquidation multiple (DISABLED by default; for backtest comparison).
+    stop_loss_multiple: Decimal | None = None
 
 
 class ReentryConfig(BaseModel):

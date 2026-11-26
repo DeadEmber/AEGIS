@@ -253,6 +253,13 @@ class SecurityEngine:
         if jp and jp.organic_score is not None and jp.organic_score < Decimal(10):
             out.append(Finding("organic_activity", Status.RISK, False, Evidence.INDICATOR,
                                f"low organic score {jp.organic_score:.1f}/100 (possible bot/wash volume)"))
+        if jp:
+            share = organic_volume_share(jp)
+            if share is not None and share < Decimal("0.01"):
+                out.append(Finding("organic_volume_share", Status.RISK, False, Evidence.INDICATOR,
+                                   f"only {share * 100:.2f}% of 24h buy volume classified organic by Jupiter "
+                                   "(proprietary classifier; strong bot/wash-volume indicator)",
+                                   {"share": str(share)}))
         p = x.pool
         if p is not None:
             w = p.w("h24")
@@ -279,3 +286,15 @@ class SecurityEngine:
             return Verdict.RISK
         return Verdict.PASS
 
+
+
+def organic_volume_share(profile: TokenProfile) -> Decimal | None:
+    st = (profile.extra or {}).get("stats24h") or {}
+    total, organic = st.get("buyVolume"), st.get("buyOrganicVolume")
+    if not total or organic is None:
+        return None
+    try:
+        t, o = Decimal(str(total)), Decimal(str(organic))
+    except (ValueError, ArithmeticError):
+        return None
+    return o / t if t > 0 else None

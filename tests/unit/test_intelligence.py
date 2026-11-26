@@ -48,9 +48,9 @@ def test_real_pump_token_assessment_is_explainable():
     assert by["mint_authority"].status == Status.PASS and by["mint_authority"].evidence == "CONFIRMED"
     assert by["freeze_authority"].status == Status.PASS
     assert by["sell_route"].status == Status.PASS and by["roundtrip_loss"].status == Status.PASS
-    # real data: 9918 trades/1 h by ~3.8k addresses, volume ~15x liquidity -> manipulation indicators
-    assert a.verdict in (Verdict.RISK, Verdict.PASS)
-    assert a.verdict != Verdict.BLOCK, a.blocking_reasons
+    # real data: Jupiter classifies only ~0.07% of 24h buy volume as organic -> RISK (indicator, not block)
+    assert by["organic_volume_share"].status == Status.RISK and by["organic_volume_share"].evidence == "INDICATOR"
+    assert a.verdict == Verdict.RISK, a.blocking_reasons
 
 
 def test_dangerous_token2022_extensions_block():  # case 3

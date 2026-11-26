@@ -102,7 +102,9 @@ def manipulation_risk(f: FeatureVector) -> Score:
         "bot_concentration": (_scale(f.get("trades_per_address_h24"), 3, 15), 0.30),
         "turnover": (_scale(f.get("volume_to_liquidity_h24"), 5, 60), 0.25),
         "low_organic": (_scale(-(f.get("organic_score") or 0) if f.get("organic_score") is not None else None,
-                               -40, -5), 0.25),
+                               -40, -5), 0.15),
+        "inorganic_volume": (_scale(-(f.get("organic_volume_share_h24") or 0)
+                                    if f.get("organic_volume_share_h24") is not None else None, -0.2, -0.005), 0.10),
         "concentration": (_scale(f.get("top10_pct"), 20, 60), 0.20),
     })
 

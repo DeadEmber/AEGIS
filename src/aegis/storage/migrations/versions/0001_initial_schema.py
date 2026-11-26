@@ -1,13 +1,13 @@
 """initial schema
 
 Revision ID: 0001
-Revises: 
+Revises:
 Create Date: 2026-11-26 11:13:12.190062
 """
-from alembic import op
 import sqlalchemy as sa
-import aegis.storage.schema
+from alembic import op
 
+import aegis.storage.schema
 
 revision = '0001'
 down_revision = None

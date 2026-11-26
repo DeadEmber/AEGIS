@@ -56,7 +56,7 @@ class SourceStats:
         self.consecutive_errors = 0
         self.last_ok_at = dt.datetime.now(UTC)
         self.latency_ms_ewma = latency_ms if self.latency_ms_ewma is None else 0.8 * self.latency_ms_ewma + 0.2 * latency_ms
-        self.latencies = (self.latencies + [latency_ms])[-200:]
+        self.latencies = ([*self.latencies, latency_ms])[-200:]
 
     def fail(self, err: SourceError) -> None:
         self.calls += 1
