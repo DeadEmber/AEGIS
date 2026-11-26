@@ -55,6 +55,30 @@ class KillSwitchBody(BaseModel):
     reason: str
 
 
+def _scheduling_summary(c: Any) -> dict[str, Any]:
+    """Configured vs effective monitoring: per class interval, overdue items, lateness and misses."""
+    now = dt.datetime.now(UTC)
+    last = c.execute(select(s.portfolio_snapshots.c.as_of).order_by(desc(s.portfolio_snapshots.c.as_of)).limit(1)).first()
+    ref = last.as_of if last is not None and last.as_of < now - dt.timedelta(days=1) else now  # simulated DB clock
+    out: dict[str, dict[str, Any]] = {}
+    for r in c.execute(select(s.scheduler_queue)):
+        g = out.setdefault(r.reason, {"n": 0, "configured_interval_s": r.interval_seconds, "overdue": 0,
+                                      "max_overdue_s": 0, "max_misses": 0, "lateness": []})
+        g["n"] += 1
+        if r.next_due_at <= ref:
+            g["overdue"] += 1
+            g["max_overdue_s"] = max(g["max_overdue_s"], int((ref - r.next_due_at).total_seconds()))
+        g["max_misses"] = max(g["max_misses"], r.consecutive_misses or 0)
+        if r.last_lateness_seconds is not None:
+            g["lateness"].append(r.last_lateness_seconds)
+    for g in out.values():
+        lat = sorted(g.pop("lateness"))
+        g["last_lateness_median_s"] = lat[len(lat) // 2] if lat else None
+        g["last_lateness_max_s"] = lat[-1] if lat else None
+    hb = c.execute(select(s.worker_heartbeats.c.last_cycle)).first()
+    return {"by_class": out, "last_cycle": (hb.last_cycle or {}).get("scheduling") if hb else None}
+
+
 def create_app(engine: Engine, settings: Settings, strategy: StrategyConfig | None = None,
                limits: RiskLimits | None = None) -> FastAPI:
     strategy = strategy or StrategyConfig()
@@ -315,27 +339,25 @@ def create_app(engine: Engine, settings: Settings, strategy: StrategyConfig | No
                     "tokens", "pools", "market_snapshots", "features", "decisions", "orders", "executions",
                     "ledger_transactions", "shadow_positions", "security_assessments")},
                 "scheduler": dict(c.execute(select(s.scheduler_queue.c.reason, func.count())
-                                            .group_by(s.scheduler_queue.c.reason)).all())}
+                                            .group_by(s.scheduler_queue.c.reason)).all()),
+                "scheduling": _scheduling_summary(c)}
 
     @app.get("/shadow")
     def shadow_view(c=Depends(conn)) -> dict[str, Any]:  # type: ignore[no-untyped-def]
+        from aegis.learning import shadow as sh
+
         rows = c.execute(select(s.shadow_positions, s.tokens.c.symbol).join(s.tokens)
-                         .order_by(desc(s.shadow_positions.c.opened_at)).limit(1000)).all()
+                         .order_by(desc(s.shadow_positions.c.opened_at)).limit(500)).all()
         out = []
-        cohorts: dict[str, dict[str, Any]] = {}
         for r in rows:
             d = dict(r._mapping)
-            mult = d["last_price_eur"] / d["entry_price_eur"]
-            peak = d["peak_price_eur"] / d["entry_price_eur"]
-            d.update(current_multiple=mult, peak_multiple=peak)
+            d["horizons"] = (d.pop("outcome") or {}).get("horizons", {})
+            d["peak_multiple_to_date"] = d["peak_price_eur"] / d["entry_price_eur"]
             out.append(_ser(d))
-            g = cohorts.setdefault(d["cohort"], {"n": 0, "peak_x2": 0, "peak_x10": 0, "below_half": 0})
-            g["n"] += 1
-            g["peak_x2"] += peak >= 2
-            g["peak_x10"] += peak >= 10
-            g["below_half"] += mult < Decimal("0.5")
-        return {**meta(c), "note": "Counterfactual, gross of liquidity limits; never part of net worth.",
-                "cohorts": cohorts, "positions": out}
+        return {**meta(c), "note": "Counterfactual; never part of net worth. Horizon status: observed (fresh data in "
+                                   "window), unknown (no fresh data), censored (not reached yet).",
+                "horizons": [sh.label(h) for h in strategy.shadow.horizons_hours],
+                "summary": sh.summary(c, strategy.shadow), "positions": out}
 
     @app.get("/intelligence")
     def intelligence(c=Depends(conn)) -> dict[str, Any]:  # type: ignore[no-untyped-def]

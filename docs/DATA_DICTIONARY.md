@@ -15,7 +15,27 @@ Convenciones:
 ## Tablas
 
 <!-- AUTO:BEGIN -->
-41 tablas (generado desde `aegis.storage.schema`).
+42 tablas (generado desde `aegis.storage.schema`).
+
+### `archive_batches`
+
+
+
+| Columna | Tipo | Nulo | Clave |
+|---|---|---|---|
+| `id` | BigInteger | no | PK |
+| `table_name` | String | no |  |
+| `path` | Text | no |  |
+| `rows` | Integer | no |  |
+| `min_id` | BigInteger | no |  |
+| `max_id` | BigInteger | no |  |
+| `min_ts` | UtcDateTime | sí |  |
+| `max_ts` | UtcDateTime | sí |  |
+| `sha256` | String | no |  |
+| `schema_version` | String | no |  |
+| `created_at` | UtcDateTime | no |  |
+| `verified_at` | UtcDateTime | sí |  |
+| `status` | String | no |  |
 
 ### `audit_logs`
 
@@ -521,6 +541,9 @@ Cola de prioridad de monitorización adaptativa.
 | `priority` | Integer | no |  |
 | `interval_seconds` | Integer | no |  |
 | `reason` | String | no |  |
+| `last_observed_at` | UtcDateTime | sí |  |
+| `last_lateness_seconds` | Integer | sí |  |
+| `consecutive_misses` | Integer | no |  |
 
 ### `security_assessments`
 

@@ -30,6 +30,7 @@ class MarketDataGateway(Protocol):
 
     def discover(self) -> list[PoolObservation]: ...
     def refresh(self, pool_addresses: list[str]) -> list[PoolObservation]: ...
+    def refresh_tokens(self, token_addresses: list[str]) -> list[PoolObservation]: ...
     def eur_usd(self) -> FxRate: ...
     def sol_eur(self) -> FxRate: ...
     def mints(self, addresses: list[str]) -> dict[str, MintInfo | None]: ...
@@ -65,6 +66,10 @@ class LiveGateway:
 
     def refresh(self, pool_addresses: list[str]) -> list[PoolObservation]:
         return self.gt.pools_multi(pool_addresses) if pool_addresses else []
+
+    def refresh_tokens(self, token_addresses: list[str]) -> list[PoolObservation]:
+        """Secondary source (DexScreener) for tokens the primary source did not return."""
+        return self.ds.tokens(token_addresses) if token_addresses else []
 
     def eur_usd(self) -> FxRate:
         return self.fx.eur_usd()
@@ -107,6 +112,8 @@ class ScriptedGateway:
     profile_overrides: dict[str, TokenProfile] = field(default_factory=dict)
     unsellable: set[str] = field(default_factory=set)
     fail_sources: set[str] = field(default_factory=set)
+    hidden_primary: set[str] = field(default_factory=set)  # tokens the primary source stops returning
+    fallback_missing: set[str] = field(default_factory=set)  # tokens the fallback source cannot see either
     decimals: int = 6
     is_simulated: bool = True
 
@@ -119,12 +126,17 @@ class ScriptedGateway:
 
     def discover(self) -> list[PoolObservation]:
         self._check("geckoterminal")
-        return self._visible()
+        return [o for o in self._visible() if o.token_address not in self.hidden_primary]
 
     def refresh(self, pool_addresses: list[str]) -> list[PoolObservation]:
         self._check("geckoterminal")
         want = set(pool_addresses)
-        return [o for o in self._visible() if o.pool_address in want]
+        return [o for o in self._visible() if o.pool_address in want and o.token_address not in self.hidden_primary]
+
+    def refresh_tokens(self, token_addresses: list[str]) -> list[PoolObservation]:
+        self._check("dexscreener")
+        want = set(token_addresses) - self.fallback_missing
+        return [o for o in self._visible() if o.token_address in want]
 
     def eur_usd(self) -> FxRate:
         self._check("frankfurter_ecb")

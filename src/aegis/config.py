@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///var/aegis-local.sqlite"
     execution_mode: ExecutionMode = ExecutionMode.PAPER_TRADING
     strategy_file: Path | None = None
+    # Research archive (Parquet). Put it on a persistent volume; it is the long-term research dataset.
+    archive_dir: Path = Path("var/archive")
     log_level: str = "INFO"
     worker_id: str = "worker-1"
     cycle_interval_seconds: int = Field(default=300, ge=30)
@@ -221,6 +223,21 @@ class EcvConfig(BaseModel):
     min_closed_positions: int = 30
 
 
+class ShadowConfig(BaseModel):
+    """Counterfactual tracking (learning only; never part of net worth)."""
+
+    horizons_hours: list[int] = [24, 7 * 24, 30 * 24, 90 * 24, 180 * 24, 365 * 24]
+    # Observation must fall within [opened+h, opened+h+tolerance], tolerance = max(min, fraction*h).
+    tolerance_fraction: float = 0.02
+    min_tolerance_hours: float = 1.0
+    # Daily caps per cohort keep 365-day tracking affordable (~170 new/day -> ~62k rows/year).
+    daily_cap: dict[str, int | None] = {"rejected": 60, "not_selected": 60, "reentry_discarded": 30,
+                                        "order_rejected": 20, "after_exit": None}
+    default_daily_cap: int | None = 20
+    max_per_cycle: int = 25
+    checkpoint_refreshes_per_cycle: int = 120
+
+
 class ValuationConfig(BaseModel):
     stale_after_minutes: int = 30
     stale_haircut: Decimal = Decimal("0.50")
@@ -240,6 +257,11 @@ class MonitoringConfig(BaseModel):
     cold: int = 6 * 3600
     max_pool_refreshes_per_cycle: int = 300
     security_checks_per_cycle: int = 6
+    # Fast lane: between full cycles the worker wakes at the earliest due item with priority <= this
+    # (positions critical/hot + hot market) and refreshes only those. Never more often than min_cycle.
+    fast_lane_max_priority: int = 3
+    min_cycle_seconds: int = 60
+    max_fast_lane_refreshes: int = 90
 
 
 class TaxConfigES(BaseModel):
@@ -270,6 +292,7 @@ class StrategyConfig(BaseModel):
     exits: ExitConfig = ExitConfig()
     reentry: ReentryConfig = ReentryConfig()
     ecv: EcvConfig = EcvConfig()
+    shadow: ShadowConfig = ShadowConfig()
     valuation: ValuationConfig = ValuationConfig()
     monitoring: MonitoringConfig = MonitoringConfig()
     tax: TaxConfigES = TaxConfigES()

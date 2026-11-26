@@ -85,6 +85,8 @@ class CycleReport:
     net_worth_eur: str | None = None
     reconciliation_ok: bool | None = None
     duration_s: float = 0.0
+    fast: bool = False
+    scheduling: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         d = dict(self.__dict__)
@@ -173,20 +175,33 @@ class Worker:
                             setattr(self, attr, FxRate(base, quote, r.rate, r.source, r.rate_time, r.fetched_at))
 
     # ------------------------------------------------------------------ main cycle
-    def run_cycle(self) -> CycleReport:
+    def run_cycle(self, fast: bool = False) -> CycleReport:
+        """Full cycle (discovery, security, entries and exits) or fast-lane cycle (due high-priority
+        refreshes and exits only)."""
         t0 = time.monotonic()
         now = ensure_utc(self.clock.now())
-        cid = now.strftime("%Y%m%dT%H%M%S")
-        rep = CycleReport(cid, now)
+        cid = now.strftime("%Y%m%dT%H%M%S") + ("f" if fast else "")
+        rep = CycleReport(cid, now, fast=fast)
         self._rates(rep)
         eur_usd = self._fx.rate if self._fx else None
+        mon = self.cfg.monitoring
 
         # ---- 1. observe (network, no DB lock)
-        discovered = self._call(rep, "geckoterminal", self.gw.discover) or []
+        discovered = [] if fast else (self._call(rep, "geckoterminal", self.gw.discover) or [])
         with self.engine.connect() as c:
-            due = scheduler.due_pools(c, now, self.cfg.monitoring.max_pool_refreshes_per_cycle)
-        refreshed = self._call(rep, "geckoterminal", self.gw.refresh, [p for _, p in due]) or []
-        observations = [o for o in discovered + refreshed if o.observed_at <= now + dt.timedelta(minutes=5)]
+            due = scheduler.due(c, now, mon.max_fast_lane_refreshes if fast else mon.max_pool_refreshes_per_cycle,
+                                max_priority=mon.fast_lane_max_priority if fast else None)
+            held_ids = {p.token_id for p in self.portfolio.active_positions(c)}
+            addr_of = {r.id: r.address for r in c.execute(
+                select(s.tokens.c.id, s.tokens.c.address).where(s.tokens.c.id.in_([d.token_id for d in due])))}
+        pools = [d.pool_address for d in due if d.pool_address]
+        refreshed = (self._call(rep, "geckoterminal", self.gw.refresh, pools) or []) if pools else []
+        got = {o.token_address for o in discovered + refreshed}
+        # Fallback source for POSITIONS the primary source did not return (pool delisted, partial response...).
+        missing_pos = [addr_of[d.token_id] for d in due if d.token_id in held_ids and d.token_id in addr_of
+                       and addr_of[d.token_id] not in got]
+        fallback = (self._call(rep, "dexscreener", self.gw.refresh_tokens, missing_pos) or []) if missing_pos else []
+        observations = [o for o in discovered + refreshed + fallback if o.observed_at <= now + dt.timedelta(minutes=5)]
         rep.observations = len(observations)
 
         # ---- 2. persist observations + monthly contribution (txn A)
@@ -225,7 +240,7 @@ class Worker:
                     intel[tid] = self._intel(c, tid, obs, eur_usd, now)
 
         # ---- 4. security assessments for the most promising unassessed candidates (network)
-        assessed = self._security_pass(intel, now, rep)
+        assessed = {} if fast else self._security_pass(intel, now, rep)
 
         # ---- 5. persist states / features / security (txn B)
         with self.engine.begin() as c:
@@ -246,33 +261,30 @@ class Worker:
 
         # ---- 6. decide + execute
         if eur_usd is not None and self._sol is not None:
-            self._decide_and_execute(intel, ctl, now, cid, rep, eur_usd)
+            self._decide_and_execute(intel, ctl, now, cid, rep, eur_usd, entries=not fast)
 
         # ---- 7. valuation, snapshot, reconciliation, scheduling (txn E)
         with self.engine.begin() as c:
-            prices = {}
+            fresh = {}
             for tid, ti in intel.items():
                 pe = usd_to_eur(ti.obs.price_usd, eur_usd) if eur_usd else None
                 if pe is not None:
-                    prices[tid] = (pe, ti.obs.liquidity_usd)
-            shadow.update_shadows(c, now, prices)
+                    fresh[tid] = (pe, ti.obs.liquidity_usd, usd_to_eur(ti.obs.liquidity_usd, eur_usd), ti.obs.observed_at)
+            shadow.update_shadows(c, now, fresh, valuer=self._liquidation, cfg=self.cfg.shadow)
+            for tid in shadow.checkpoint_tokens(c, now, self.cfg.shadow, self.cfg.shadow.checkpoint_refreshes_per_cycle):
+                if tid not in intel:  # a horizon window is open: make sure the token is refreshed
+                    scheduler.request_now(c, tid, now, 7, "shadow_checkpoint")
             vals = self._valuations(c, now, eur_usd)
             st = self.portfolio.state(c, now, vals)
-            self.portfolio.persist_snapshot(c, st, {"cycle": cid, "mode": str(self.mode),
-                                                    "data": "simulated" if self.gw.is_simulated else "live"})
+            if not fast or rep.buys or rep.sells or not st.reconciliation.ok:  # fast lane: snapshot only on change
+                self.portfolio.persist_snapshot(c, st, {"cycle": cid, "mode": str(self.mode),
+                                                        "data": "simulated" if self.gw.is_simulated else "live"})
             rep.net_worth_eur = str(q_eur(st.net_worth_liquidable))
             rep.reconciliation_ok = st.reconciliation.ok
             if not st.reconciliation.ok:
                 self.risk.trip_kill_switch(c, now, "reconciliation failure: " + canonical_json(
                     {k: v for k, v in st.reconciliation.checks.items() if not v["ok"]}))
-            held = {p.token_id for p in self.portfolio.active_positions(c)}
-            for tid, ti in intel.items():
-                pr, iv, why = scheduler.classify(ti.state, tid in held, ti.security == "BLOCK",
-                                                 bool(ti.row.explosion_count or ti.row.entries), self.cfg.monitoring)
-                scheduler.schedule(c, tid, now, pr, iv, why)
-            for p in self.portfolio.active_positions(c):  # positions never fall out of the queue
-                if p.token_id not in intel:
-                    scheduler.schedule(c, p.token_id, now, 2, self.cfg.monitoring.position_stable, "position_unobserved")
+            rep.scheduling = self._reschedule(c, intel, due, now)
             self._persist_health(c, now)
             rep.duration_s = round(time.monotonic() - t0, 3)
             repo.record_event(c, s.system_events, now, kind="cycle", severity="info" if not rep.errors else "warn",
@@ -281,6 +293,50 @@ class Worker:
         alog.event(log, "cycle_complete", **{k: v for k, v in rep.as_dict().items() if k != "errors"},
                    error_count=len(rep.errors))
         return rep
+
+    # ------------------------------------------------------------------ scheduling
+    def _reschedule(self, c: Connection, intel: dict[int, TokenIntel], due: list[Any], now: dt.datetime) -> dict[str, Any]:
+        """Anchor next refresh on the actual observation; keep missed items overdue; record lateness/age."""
+        held = {p.token_id for p in self.portfolio.active_positions(c)}
+        lateness: dict[str, list[int]] = defaultdict(list)
+        due_reason = {d.token_id: d.reason for d in due}
+        for tid, ti in intel.items():
+            pr, iv, why = scheduler.classify(ti.state, tid in held, ti.security == "BLOCK",
+                                             bool(ti.row.explosion_count or ti.row.entries), self.cfg.monitoring)
+            late = scheduler.observed(c, tid, ti.obs.observed_at, now, pr, iv, why)
+            if late is not None and tid in due_reason:
+                lateness[due_reason[tid]].append(late)
+        missed = [d.token_id for d in due if d.token_id not in intel]
+        max_misses = 0
+        for tid in missed:
+            max_misses = max(max_misses, scheduler.missed(c, tid, now, is_position=tid in held))
+        for tid in held:  # positions never fall out of the queue (and are never postponed)
+            scheduler.ensure_due(c, tid, now, 0, "position_unqueued")
+        ages = []
+        for tid in held:
+            snap = repo.latest_snapshot(c, tid)
+            ages.append(None if snap is None else int((now - snap.observed_at).total_seconds()))
+        known = [a for a in ages if a is not None]
+        return {
+            "due": len(due), "refreshed": len(due) - len(missed), "missed": len(missed),
+            "missed_positions": sum(1 for t in missed if t in held), "max_consecutive_misses": max_misses,
+            "lateness_s": {k: {"n": len(v), "median": sorted(v)[len(v) // 2], "max": max(v)} for k, v in lateness.items()},
+            "position_observation_age_s": {"max": max(known) if known else None,
+                                           "unobserved": sum(1 for a in ages if a is None)},
+        }
+
+    def next_wake(self, now: dt.datetime, next_full: dt.datetime, last_start: dt.datetime) -> tuple[dt.datetime, bool]:
+        """When to run the next cycle and whether it is a fast-lane cycle (never sooner than min_cycle)."""
+        mon = self.cfg.monitoring
+        floor = last_start + dt.timedelta(seconds=mon.min_cycle_seconds)
+        with self.engine.connect() as c:
+            earliest = scheduler.earliest_due(c, mon.fast_lane_max_priority)
+        if earliest is None or earliest >= next_full:
+            return max(next_full, floor), False
+        wake = max(earliest, floor)
+        if wake >= next_full:
+            return max(next_full, floor), False
+        return wake, True
 
     # ------------------------------------------------------------------ pieces
     def _update_extremes(self, c: Connection, tid: int, obs: PoolObservation, now: dt.datetime) -> None:
@@ -508,7 +564,7 @@ class Worker:
 
     # ------------------------------------------------------------------ decide & execute
     def _decide_and_execute(self, intel: dict[int, TokenIntel], ctl: ControlState, now: dt.datetime, cid: str,
-                            rep: CycleReport, eur_usd: Decimal) -> None:
+                            rep: CycleReport, eur_usd: Decimal, entries: bool = True) -> None:
         assert self._sol is not None
         sol_eur = self._sol.rate
         exits: list[tuple[Decision, Any, TokenIntel | None]] = []
@@ -526,7 +582,11 @@ class Worker:
             budget = self.allocation.budget(c, now, regime_multiplier(moi))
             slots = budget.slots if ctl.buys_allowed else {"exploration": 0, "selection": 0, "second_chance": 0}
             cands = [self._candidate(ti, sol_eur, eur_usd) for ti in intel.values()]
-            buys, others = self.decider.plan_entries(cands, slots, now, held_tokens=held, seed_material=f"{self.cfg.seed}:{cid}")
+            if entries:
+                buys, others = self.decider.plan_entries(cands, slots, now, held_tokens=held,
+                                                         seed_material=f"{self.cfg.seed}:{cid}")
+            else:
+                buys, others = [], []
 
         # Network: fetch executable quotes for planned orders before opening the write transaction.
         quotes: dict[tuple[int, str], SwapQuote | None] = {}
@@ -579,7 +639,7 @@ class Worker:
                             shadow.open_shadow(c, token_id=p.token_id, cohort="after_exit", reason=" ".join(d.reasons),
                                                t=now, price_eur=usd_to_eur(ti.obs.price_usd, eur_usd),
                                                notional_eur=self.cfg.capital.ticket_eur, est_cost_eur=ZERO,
-                                               liquidity_usd=ti.obs.liquidity_usd)
+                                               liquidity_usd=ti.obs.liquidity_usd, cfg=self.cfg.shadow)
                     else:
                         rep.rejected_orders += 1
             if ctl.buys_allowed:
@@ -601,7 +661,7 @@ class Worker:
                         shadow.open_shadow(c, token_id=d.token_id, cohort="order_rejected", reason=res.reason, t=now,
                                            price_eur=usd_to_eur(ti.obs.price_usd, eur_usd),
                                            notional_eur=self.cfg.capital.ticket_eur, est_cost_eur=Decimal("0.12"),
-                                           liquidity_usd=ti.obs.liquidity_usd)
+                                           liquidity_usd=ti.obs.liquidity_usd, cfg=self.cfg.shadow)
             opened = rejects_logged = 0
             for d in others:
                 ti = intel[d.token_id]
@@ -611,11 +671,16 @@ class Worker:
                     rejects_logged += 1
                 self._decision_row(c, d, now, outcome="recorded")
                 rep.decisions += 1
-                cohort = "rejected" if d.action == Action.REJECT else "not_selected"
-                if opened < 25 and shadow.open_shadow(
+                if d.action == Action.REJECT:
+                    cohort = "rejected"
+                elif ti.row.entries >= 1:  # former position whose re-entry was discarded
+                    cohort = "reentry_discarded"
+                else:
+                    cohort = "not_selected"
+                if opened < self.cfg.shadow.max_per_cycle and shadow.open_shadow(
                         c, token_id=d.token_id, cohort=cohort, reason=" ".join(d.reasons)[:300], t=now,
                         price_eur=usd_to_eur(ti.obs.price_usd, eur_usd), notional_eur=self.cfg.capital.ticket_eur,
-                        est_cost_eur=Decimal("0.12"), liquidity_usd=ti.obs.liquidity_usd):
+                        est_cost_eur=Decimal("0.12"), liquidity_usd=ti.obs.liquidity_usd, cfg=self.cfg.shadow):
                     opened += 1
             rep.shadows_opened = opened
 
@@ -696,22 +761,28 @@ class Worker:
 
     # ------------------------------------------------------------------ loop
     def run_forever(self, interval_s: int, stop: threading.Event | None = None, max_cycles: int | None = None) -> None:
+        """Full cycle every `interval_s`; fast-lane cycles in between at the earliest due high-priority item."""
         self.bootstrap()
         stop = stop or threading.Event()
         n = 0
+        next_full = self.clock.now()
         while not stop.is_set():
-            begin = time.monotonic()
+            start = self.clock.now()
+            fast = start < next_full
             try:
-                self.run_cycle()
-            except Exception as exc:
+                self.run_cycle(fast=fast)
+            except Exception as exc:  # the loop must survive; the error is recorded, nothing is fabricated
                 alog.event(log, "cycle_failed", 40, error=repr(exc)[:500])
                 with self.engine.begin() as c:
                     repo.record_event(c, s.system_events, self.clock.now(), kind="cycle_failed", severity="error",
-                                      message=repr(exc)[:500], details={})
+                                      message=repr(exc)[:500], details={"fast": fast})
+            if not fast:
+                next_full = start + dt.timedelta(seconds=interval_s)
             n += 1
             if max_cycles is not None and n >= max_cycles:
                 break
-            stop.wait(max(5.0, interval_s - (time.monotonic() - begin)))
+            wake, _ = self.next_wake(self.clock.now(), next_full, start)
+            stop.wait(max(1.0, (wake - self.clock.now()).total_seconds()))
 
 
 def _hash_model(m: Any) -> str:

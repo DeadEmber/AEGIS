@@ -176,15 +176,19 @@ def test_simulated_and_live_data_never_mixed(tmp_path):
 
 
 def test_retention_never_touches_financial_records(tmp_path):
+    from aegis.storage.archive import archive_all
     from aegis.storage.retention import RetentionPolicy, prune
 
     clock = ManualClock(START)
     w, _ = _worker(f"sqlite:///{tmp_path}/p.sqlite", clock)
     _run(w, clock, hours=12)
+    root = tmp_path / "archive"
     with w.engine.begin() as c:
         before = {t: repo.count(c, getattr(s, t)) for t in ("ledger_postings", "orders", "executions", "position_lots")}
         snaps = repo.count(c, s.market_snapshots)
-        out = prune(c, clock.now(), RetentionPolicy(snapshot_full_days=0, feature_days=0, trivial_decision_days=0))
+        archive_all(c, root, clock.now() + dt.timedelta(hours=1))
+        out = prune(c, clock.now(), root, RetentionPolicy(snapshot_full_days=0, feature_days=0, trivial_decision_days=0,
+                                                         episode_pre_hours=0, episode_post_hours=0))
         after = {t: repo.count(c, getattr(s, t)) for t in before}
         assert before == after
         assert out["market_snapshots"] > 0 and repo.count(c, s.market_snapshots) < snaps
@@ -242,3 +246,15 @@ def test_ecv_variant_identical_while_ecv_unavailable():  # experiment E1 harness
     a, b = res["aegis-baseline"], res["aegis-ecv"]
     assert a["strategy_hash"] != b["strategy_hash"]
     assert (a["objective_eur"], a["buys"], a["sells"]) == (b["objective_eur"], b["buys"], b["sells"])
+
+
+def test_shadow_horizons_and_checkpoints_in_worker(tmp_path):
+    clock = ManualClock(START)
+    w, _ = _worker(f"sqlite:///{tmp_path}/sh24.sqlite", clock)
+    _run(w, clock, hours=26)
+    with w.engine.connect() as c:
+        rows = c.execute(select(s.shadow_positions.c.outcome, s.shadow_positions.c.closed_at)).all()
+    assert rows and all(r.outcome.get("version") == 2 for r in rows)
+    statuses = {r.outcome["horizons"]["24h"]["status"] for r in rows}
+    assert "observed" in statuses  # simulated tokens are observed every cycle
+    assert all(r.closed_at is None for r in rows)  # 7d..365d still censored

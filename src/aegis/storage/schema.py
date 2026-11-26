@@ -581,6 +581,9 @@ scheduler_queue = Table(
     Column("priority", Integer, nullable=False),
     Column("interval_seconds", Integer, nullable=False),
     Column("reason", String(64), nullable=False),
+    _ts("last_observed_at", nullable=True),
+    Column("last_lateness_seconds", Integer),  # actual observation time - scheduled due time
+    Column("consecutive_misses", Integer, nullable=False, default=0, server_default="0"),
 )
 Index("ix_sched_due", scheduler_queue.c.next_due_at)
 
@@ -656,6 +659,24 @@ audit_logs = Table(
     Column("action", String(64), nullable=False),
     Column("details", JSON, nullable=False, default=dict),
 )
+
+archive_batches = Table(
+    "archive_batches", metadata, PK(),
+    Column("table_name", String(64), nullable=False),
+    Column("path", Text, nullable=False),  # relative to the archive root
+    Column("rows", Integer, nullable=False),
+    Column("min_id", BigInteger, nullable=False),
+    Column("max_id", BigInteger, nullable=False),
+    _ts("min_ts", nullable=True),
+    _ts("max_ts", nullable=True),
+    Column("sha256", String(64), nullable=False),  # canonical content hash, re-verified after writing
+    Column("schema_version", String(32), nullable=False),
+    _ts("created_at"),
+    _ts("verified_at", nullable=True),
+    Column("status", String(16), nullable=False),  # verified | failed
+    UniqueConstraint("table_name", "min_id", "max_id"),
+)
+Index("ix_archive_table_maxid", archive_batches.c.table_name, archive_batches.c.max_id)
 
 backtest_runs = Table(
     "backtest_runs", metadata, PK(),
