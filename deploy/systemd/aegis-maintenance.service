@@ -1,0 +1,10 @@
+# Daily: archive + reconcile -> verify -> backup -> verify backup -> prune (fail-safe; non-zero exit on doubt).
+[Unit]
+Description=AEGIS archive, backup and retention
+
+[Service]
+Type=oneshot
+User=aegis
+WorkingDirectory=/opt/aegis
+EnvironmentFile=/opt/aegis/.env
+ExecStart=/opt/aegis/.venv/bin/aegis maintenance

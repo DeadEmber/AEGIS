@@ -1,0 +1,14 @@
+[Unit]
+Description=AEGIS read API (dashboard backend)
+After=network-online.target
+
+[Service]
+User=aegis
+WorkingDirectory=/opt/aegis
+EnvironmentFile=/opt/aegis/.env
+ExecStart=/opt/aegis/.venv/bin/aegis api --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

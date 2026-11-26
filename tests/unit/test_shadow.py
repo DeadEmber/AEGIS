@@ -115,3 +115,22 @@ def test_legacy_rows_are_not_evaluated_with_stale_prices(engine):
         r = _row(c, sid)
     assert r.outcome["legacy"] is True and r.closed_at is None
     assert all("gross_multiple" not in v for v in r.outcome["horizons"].values())
+
+
+def test_units_sold_shadow_measures_forgone_upside(engine):
+    from aegis.research.monetisation import forgone_upside
+
+    with engine.begin() as c:
+        tok = new_token(c)
+        sid = shadow.open_shadow(c, token_id=tok, cohort="after_partial_sell", reason="PRS trim", t=T0,
+                                 price_eur=D("0.5"), notional_eur=D(5), est_cost_eur=D(0), liquidity_usd=D(10000),
+                                 qty=D(10), sale={"kind": "units_sold", "qty_sold": D(10), "net_proceeds_eur": D(5)})
+        sid2 = shadow.open_shadow(c, token_id=tok, cohort="after_partial_sell", reason="second trim", t=T0,
+                                  price_eur=D("0.5"), notional_eur=D(5), est_cost_eur=D(0), liquidity_usd=D(10000),
+                                  qty=D(10), sale={"kind": "units_sold"})
+        assert sid and sid2 and sid != sid2  # several sales of one token are all tracked
+        shadow.update_shadows(c, T0 + 24 * H, {tok: (D(2), D(10000), D(9000), T0 + 24 * H)},
+                              lambda qty, price, _liq: qty * price, ShadowConfig())
+        fu = forgone_upside(c, "24h")
+    assert fu["observed"] == 2
+    assert fu["forgone_liquidable_eur"] == 2 * (D(10) * D(2) - D(5))  # units now worth 20 vs 5 realised

@@ -166,3 +166,60 @@ def test_next_wake_respects_floor_and_full_cycle(tmp_path):
     # full cycle comes first
     wake, fast = w.next_wake(START, START + dt.timedelta(seconds=10), START - dt.timedelta(seconds=100))
     assert not fast and wake == START + dt.timedelta(seconds=10)
+
+
+class _AdvanceEvent:
+    """threading.Event stand-in: wait() advances the ManualClock instead of sleeping."""
+
+    def __init__(self, clock):
+        self.clock = clock
+
+    def is_set(self):
+        return False
+
+    def wait(self, seconds):
+        self.clock.advance(seconds=seconds)
+        return False
+
+
+def _cycle_log(w):
+    with w.engine.connect() as c:
+        return [(r.details["started_at"], r.details["fast"]) for r in c.execute(
+            select(s.system_events.c.details).where(s.system_events.c.kind == "cycle").order_by(s.system_events.c.id))]
+
+
+def test_replay_uses_exactly_the_operational_schedule(tmp_path):
+    """Audit P1 (2nd): the comparator used fixed 30-min steps. Worker.replay now shares step/plan_wake with
+    run_forever: same cycle times and same fast/full sequence."""
+    c1, c2 = ManualClock(START), ManualClock(START)
+    live, _ = _worker(f"sqlite:///{tmp_path}/live.sqlite", c1)
+    live.run_forever(FULL, stop=_AdvanceEvent(c1), max_cycles=40)
+    rp, _ = _worker(f"sqlite:///{tmp_path}/rp.sqlite", c2)
+    rr = rp.replay(c1.now() + dt.timedelta(seconds=1), full_interval_s=FULL)  # include the last live cycle
+    assert _cycle_log(live) == _cycle_log(rp) and len(_cycle_log(rp)) == 40
+    assert rr.fast_cycles > 0 and rr.representativeness["operational_equivalence"]
+    assert rr.representativeness["fast_dynamics_representative"]  # continuous simulated data
+
+
+def test_replay_respects_data_resolution_and_flags_fast_dynamics(tmp_path):
+    clock = ManualClock(START)
+    w, gw = _worker(f"sqlite:///{tmp_path}/r300.sqlite", clock)
+    gw.data_resolution_seconds = 300  # e.g. 5-minute historical candles
+    rr = w.replay(START + dt.timedelta(hours=6), full_interval_s=FULL, data_resolution_s=300)
+    starts = [dt.datetime.fromisoformat(t) for t, _ in _cycle_log(w)]
+    assert all(int(t.timestamp()) % 300 == 0 for t in starts)  # never wakes between data points
+    rep = rr.representativeness
+    assert rep["operational_equivalence"] and not rep["fast_dynamics_representative"]
+    assert rep["effective_sampling_s"] == 300 and any("NOT" in n for n in rep["notes"])
+    with w.engine.connect() as c:  # observations are stamped on the data grid (no look-ahead)
+        obs = [r.observed_at for r in c.execute(select(s.market_snapshots.c.observed_at))]
+    assert all(int(t.timestamp()) % 300 == 0 for t in obs)
+
+
+def test_fixed_cadence_is_flagged_not_equivalent(tmp_path):
+    clock = ManualClock(START)
+    w, _ = _worker(f"sqlite:///{tmp_path}/fx.sqlite", clock)
+    rr = w.replay(START + dt.timedelta(hours=3), cadence="fixed", fixed_step_s=1800)
+    assert rr.cycles == 6 and rr.fast_cycles == 0
+    assert not rr.representativeness["operational_equivalence"]
+    assert not rr.representativeness["fast_dynamics_representative"]

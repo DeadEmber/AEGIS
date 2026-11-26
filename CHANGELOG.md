@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.3 — 2026-11-26 — segunda auditoría independiente
+
+### Corregido (reproducido antes de corregir)
+- **Archivo**: el archivado por `max_id` podía omitir para siempre filas con id menor y timestamp
+  posterior, o confirmadas tarde. Ahora los lotes son el prefijo contiguo de ids elegibles, la
+  reconciliación por conjunto de ids cubre cualquier omisión y el borrado exige cobertura verificada id
+  a id.
+- **Backtest**: el comparador usaba pasos fijos de 30 min. Ahora `Worker.replay` comparte el bucle de
+  planificación con `run_forever` (mismos ciclos), cuantiza a la resolución de los datos y marca la
+  representatividad.
+
+### Añadido
+- Backup y restauración del archivo sin servicios de pago: `manifest.json`,
+  `aegis archive --verify/--backup/--restore/--import-manifest`, `aegis maintenance` a prueba de fallos,
+  unidades systemd, servicio compose y checklist de despliegue.
+- Tablas financieras de solo inserción en el archivo (copia inmutable del libro).
+- Contrafactual de unidades vendidas en ventas parciales y totales; métricas `forgone_upside` y
+  `reinvestment_return` para E2.
+- Hipótesis E3: se registra la reentrada bloqueada por un residual abierto, sin cambio de política.
+
 ## 0.2.2 — 2026-11-26 — correcciones de auditoría independiente
 
 ### Corregido (los tres P1 se reprodujeron antes de corregirlos)

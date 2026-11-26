@@ -27,6 +27,7 @@ from aegis.marketdata.solana_rpc import SolanaRpcClient
 
 class MarketDataGateway(Protocol):
     is_simulated: bool
+    data_resolution_seconds: int | None  # None: live / continuous; r: data only known on an r-second grid
 
     def discover(self) -> list[PoolObservation]: ...
     def refresh(self, pool_addresses: list[str]) -> list[PoolObservation]: ...
@@ -42,6 +43,7 @@ class MarketDataGateway(Protocol):
 
 class LiveGateway:
     is_simulated = False
+    data_resolution_seconds = None
 
     def __init__(self, settings: Settings, strategy: StrategyConfig):
         ua = settings.http_user_agent
@@ -116,13 +118,19 @@ class ScriptedGateway:
     fallback_missing: set[str] = field(default_factory=set)  # tokens the fallback source cannot see either
     decimals: int = 6
     is_simulated: bool = True
+    # Historical-like data grid: observations only exist at multiples of this many seconds (no look-ahead).
+    data_resolution_seconds: int | None = None
 
     def _check(self, src: str) -> None:
         if src in self.fail_sources:
             raise SourceError(src, "network", "simulated outage")
 
     def _visible(self) -> list[PoolObservation]:
-        return self.script(self.clock())
+        t = self.clock()
+        r = self.data_resolution_seconds
+        if r:  # data known only at the last grid point <= t
+            t = dt.datetime.fromtimestamp((int(t.timestamp()) // r) * r, t.tzinfo)
+        return self.script(t)
 
     def discover(self) -> list[PoolObservation]:
         self._check("geckoterminal")

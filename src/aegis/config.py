@@ -19,7 +19,7 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from aegis.core.hashing import stable_hash
@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     strategy_file: Path | None = None
     # Research archive (Parquet). Put it on a persistent volume; it is the long-term research dataset.
     archive_dir: Path = Path("var/archive")
+    # Backup destination for the archive (another disk / mounted volume). Empty = backups disabled.
+    backup_dir: Path | None = None
     log_level: str = "INFO"
     worker_id: str = "worker-1"
     cycle_interval_seconds: int = Field(default=300, ge=30)
@@ -60,6 +62,11 @@ class Settings(BaseSettings):
     jupiter_api_key: str = ""
     solana_rpc_url: str = "https://api.mainnet-beta.solana.com"
     http_user_agent: str = "aegis-research/0.2"
+
+    @field_validator("backup_dir", mode="before")
+    @classmethod
+    def _empty_backup_is_none(cls, v: object) -> object:
+        return None if v is None or (isinstance(v, str) and not v.strip()) else v
 
     @model_validator(mode="after")
     def _guard_live(self) -> Settings:
@@ -232,7 +239,8 @@ class ShadowConfig(BaseModel):
     min_tolerance_hours: float = 1.0
     # Daily caps per cohort keep 365-day tracking affordable (~170 new/day -> ~62k rows/year).
     daily_cap: dict[str, int | None] = {"rejected": 60, "not_selected": 60, "reentry_discarded": 30,
-                                        "order_rejected": 20, "after_exit": None}
+                                        "order_rejected": 20, "after_exit": None, "after_partial_sell": None,
+                                        "reentry_blocked_residual": 30}
     default_daily_cap: int | None = 20
     max_per_cycle: int = 25
     checkpoint_refreshes_per_cycle: int = 120

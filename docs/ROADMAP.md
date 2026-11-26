@@ -20,8 +20,8 @@
 
 ## Siguiente bloque ejecutable (por prioridad)
 
-1. **Despliegue permanente de paper trading** (fase 12), con `aegis archive` y `aegis prune` programados a
-   diario y el archivo en un volumen persistente. Elegir VPS/Fly y Supabase. Sin esto no se
+1. **Despliegue permanente de paper trading** (fase 12). Checklist en `DEPLOYMENT.md`: unidades systemd,
+   `aegis maintenance` diario con backup verificado, archivo y backup en discos distintos. Elegir VPS/Fly y Supabase. Sin esto no se
    acumula el dataset point-in-time real, que es la única evidencia sin look-ahead disponible hoy.
 2. **`HistoricalGateway` + fuente histórica on-chain** (fases 5 y 9). Decidir el proveedor
    (Helius / Dune / BigQuery / Flipside) y el presupuesto.
@@ -36,6 +36,22 @@
 
 ## Experimentos de investigación
 
+### E3 — Reentrada durante una segunda explosión con residual abierto (segunda auditoría, P2)
+
+- **Hipótesis.** Excluir los tokens en cartera impide invertir en una segunda explosión cuando se
+  conserva un residual. Una reentrada deliberada podría capturar la segunda ola mejor que el residual
+  solo.
+- **Taxonomía.**
+  - **REENTRY**: nueva posición tras una salida total (existe).
+  - **REENTRY_ON_RESIDUAL**: compra deliberada con presupuesto `second_chance`, sobre un token con
+    residual abierto y con señal de segunda ola (**no existe**).
+  - **Compra duplicada**: misma intención repetida (impedida por la exclusión y la idempotencia).
+  - **INCREASE**: aumento de una posición viva (no lo genera la política).
+- **Datos que ya se recogen.** Decisiones WATCH `reentry_blocked_by_open_residual` y cohorte sombra
+  `reentry_blocked_residual`, con horizontes de 24 h a 365 d.
+- **Regla.** No se modifica la política ni se aumenta la exposición automáticamente hasta que E3 muestre
+  valor fuera de muestra frente a mantener solo el residual.
+
 ### E2 — Política de monetización y grandes ganadores (auditoría, P2)
 
 - **Pregunta.** ¿Cuánto beneficio se sacrifica en los grandes ganadores al recuperar capital pronto,
@@ -48,8 +64,9 @@
   - Objetivo neto y patrimonio liquidable.
   - Capital reciclado y su reinversión (`purchases_from_recycled`).
   - Inversiones financiadas con reciclado y Capital Turnover.
-  - Beneficio sacrificado en ganadores: pico ejecutable posterior frente al importe obtenido, con la
-    cohorte sombra `after_exit` en sus horizontes.
+  - Beneficio sacrificado en ganadores: valor liquidable posterior de las **unidades vendidas** (parciales
+    y totales) frente al importe neto obtenido (`research.monetisation.forgone_upside`), comparado con el
+    P&L atribuido al capital reciclado reinvertido (`reinvestment_return`).
   - Top Winner Dependency y probabilidad de beneficio fuera de muestra.
 - **Regla.** La política operativa por defecto (recuperación a x2, residual del 10 %, trailing desde
   x3) **no se modifica** sin evidencia fuera de muestra con IC 90 % > 0.

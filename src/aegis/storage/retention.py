@@ -21,11 +21,11 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-from sqlalchemy import and_, delete, func, or_, select
+from sqlalchemy import and_, delete, func, select
 from sqlalchemy.engine import Connection
 
 from aegis.storage import schema as s
-from aegis.storage.archive import archived_id_ranges
+from aegis.storage.archive import archived_ids
 
 EPISODE_STATES = ("DISTRIBUTION", "COLLAPSE", "RECOVERY", "SECOND_WAVE", "EXPLOSION", "EXPANSION")
 
@@ -40,10 +40,10 @@ class RetentionPolicy:
     episode_post_hours: int = 48
 
 
-def _in_ranges(col, ranges: list[tuple[int, int]]):  # type: ignore[no-untyped-def]
-    if not ranges:
-        return col.is_(None) & col.is_not(None)  # always false
-    return or_(*[and_(col >= a, col <= b) for a, b in ranges])
+def _delete_ids(conn: Connection, table, ids: list[int]) -> int:  # type: ignore[no-untyped-def]
+    for k in range(0, len(ids), 500):
+        conn.execute(delete(table).where(table.c.id.in_(ids[k:k + 500])))
+    return len(ids)
 
 
 Window = tuple[dt.datetime, dt.datetime]
@@ -61,51 +61,52 @@ def episode_windows(conn: Connection, now: dt.datetime, policy: RetentionPolicy)
 
 
 def prune(conn: Connection, now: dt.datetime, archive_root: Path, policy: RetentionPolicy = RetentionPolicy()) -> dict[str, int]:
+    """Delete only rows whose id is present in an integrity-verified archive batch."""
     out: dict[str, int] = {}
-    # ---- market snapshots: thin to hourly outside episode windows, only archived rows
+    # ---- market snapshots: thin to hourly outside episode windows
     cut = now - dt.timedelta(days=policy.snapshot_full_days)
-    ranges = archived_id_ranges(conn, archive_root, "market_snapshots")
+    covered = archived_ids(conn, archive_root, "market_snapshots")
     windows = episode_windows(conn, now, policy)
     hour = func.strftime("%Y-%m-%d %H", s.market_snapshots.c.observed_at) if conn.dialect.name == "sqlite" else \
         func.date_trunc("hour", s.market_snapshots.c.observed_at)
     keep = {r[0] for r in conn.execute(select(func.min(s.market_snapshots.c.id))
                                        .where(s.market_snapshots.c.observed_at < cut)
                                        .group_by(s.market_snapshots.c.token_id, hour))}
-    cand = conn.execute(select(s.market_snapshots.c.id, s.market_snapshots.c.token_id, s.market_snapshots.c.observed_at)
-                        .where(and_(s.market_snapshots.c.observed_at < cut, _in_ranges(s.market_snapshots.c.id, ranges)))).all()
-    protected = 0
-    to_delete = []
-    for r in cand:
+    protected = not_archived = 0
+    to_delete: list[int] = []
+    for r in conn.execute(select(s.market_snapshots.c.id, s.market_snapshots.c.token_id, s.market_snapshots.c.observed_at)
+                          .where(s.market_snapshots.c.observed_at < cut)):
         if r.id in keep:
             continue
         if any(a <= r.observed_at <= b for a, b in windows.get(r.token_id, [])):
             protected += 1
             continue
+        if r.id not in covered:
+            not_archived += 1
+            continue
         to_delete.append(r.id)
-    for i in range(0, len(to_delete), 500):
-        conn.execute(delete(s.market_snapshots).where(s.market_snapshots.c.id.in_(to_delete[i:i + 500])))
-    out["market_snapshots"] = len(to_delete)
+    out["market_snapshots"] = _delete_ids(conn, s.market_snapshots, to_delete)
     out["market_snapshots_protected_episode_rows"] = protected
-    out["market_snapshots_not_archived_skipped"] = int(conn.execute(
-        select(func.count()).select_from(s.market_snapshots).where(and_(
-            s.market_snapshots.c.observed_at < cut, ~_in_ranges(s.market_snapshots.c.id, ranges)))).scalar_one())
+    out["market_snapshots_not_archived_skipped"] = not_archived
 
     # ---- features
-    fr = archived_id_ranges(conn, archive_root, "features")
-    out["features"] = conn.execute(delete(s.features).where(and_(
-        s.features.c.as_of < now - dt.timedelta(days=policy.feature_days), _in_ranges(s.features.c.id, fr)))).rowcount
+    fc = archived_ids(conn, archive_root, "features")
+    ids = [r.id for r in conn.execute(select(s.features.c.id).where(
+        s.features.c.as_of < now - dt.timedelta(days=policy.feature_days)))]
+    out["features"] = _delete_ids(conn, s.features, [i for i in ids if i in fc])
+    out["features_not_archived_skipped"] = len(ids) - out["features"]
 
     # ---- trivial decisions (never those referenced by orders)
-    dr = archived_id_ranges(conn, archive_root, "decisions")
+    dc = archived_ids(conn, archive_root, "decisions")
     referenced = select(s.orders.c.decision_id).where(s.orders.c.decision_id.is_not(None))
-    out["decisions"] = conn.execute(delete(s.decisions).where(and_(
+    ids = [r.id for r in conn.execute(select(s.decisions.c.id).where(and_(
         s.decisions.c.decided_at < now - dt.timedelta(days=policy.trivial_decision_days),
-        s.decisions.c.action.in_(["HOLD", "WATCH", "REJECT", "WAIT"]),
-        s.decisions.c.id.not_in(referenced), _in_ranges(s.decisions.c.id, dr)))).rowcount
+        s.decisions.c.action.in_(["HOLD", "WATCH", "REJECT", "WAIT"]), s.decisions.c.id.not_in(referenced))))]
+    out["decisions"] = _delete_ids(conn, s.decisions, [i for i in ids if i in dc])
 
     # ---- system events
-    er = archived_id_ranges(conn, archive_root, "system_events")
-    out["system_events"] = conn.execute(delete(s.system_events).where(and_(
-        s.system_events.c.occurred_at < now - dt.timedelta(days=policy.system_event_days),
-        _in_ranges(s.system_events.c.id, er)))).rowcount
+    ec = archived_ids(conn, archive_root, "system_events")
+    ids = [r.id for r in conn.execute(select(s.system_events.c.id).where(
+        s.system_events.c.occurred_at < now - dt.timedelta(days=policy.system_event_days)))]
+    out["system_events"] = _delete_ids(conn, s.system_events, [i for i in ids if i in ec])
     return out

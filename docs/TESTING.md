@@ -89,6 +89,20 @@ AEGIS_TEST_POSTGRES_URL=postgresql+psycopg://user@host/db .venv/bin/pytest tests
 | Archivo antes de borrar | `test_prune_deletes_nothing_without_verified_archive`, `test_archive_is_verified_complete_and_queryable`, `test_prune_after_archive_keeps_research_data_in_archive`, `test_tampered_or_missing_archive_blocks_deletion`, `test_late_row_inside_archived_range_is_not_pruned`, `test_episode_windows_keep_full_resolution` |
 | E2 y ECV | `test_monetisation_grid_runs_under_identical_conditions`, `test_rmst_is_an_expectation_not_the_median` |
 
+## Segunda auditoría (0.2.3)
+
+| Hallazgo | Prueba(s) |
+|---|---|
+| Archivado: ids menores nunca omitidos | `test_incremental_batches_never_skip_lower_ids` |
+| Archivado: confirmación tardía protegida y reconciliada | `test_late_row_inside_archived_range_is_protected_then_reconciled` |
+| Tablas financieras archivadas, nunca podadas, el libro archivado suma 0 | `test_financial_tables_are_archived_and_never_pruned` |
+| Backup, verificación y restauración sin base de datos | `test_backup_verify_restore_without_database`, `test_manifest_reimport_after_database_loss` |
+| Mantenimiento a prueba de fallos | `test_maintenance_is_fail_safe` |
+| Replay igual al worker operativo | `test_replay_uses_exactly_the_operational_schedule` |
+| Resolución de datos y representatividad | `test_replay_respects_data_resolution_and_flags_fast_dynamics`, `test_fixed_cadence_is_flagged_not_equivalent` |
+| Contrafactual de ventas parciales | `test_partial_sales_are_tracked_as_units_sold_counterfactuals`, `test_units_sold_shadow_measures_forgone_upside` |
+| Reentrada con residual (E3) | `test_residual_reentry_signal_recorded_not_bought` |
+
 ## Pendientes de prueba
 
 - Pruebas de rendimiento: ciclos con más de 5.000 tokens y tiempo por fase.

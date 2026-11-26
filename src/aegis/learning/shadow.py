@@ -48,25 +48,34 @@ def opened_today(conn: Connection, cohort: str, t: dt.datetime) -> int:
 
 def open_shadow(conn: Connection, *, token_id: int, cohort: str, reason: str, t: dt.datetime, price_eur: Decimal,
                 notional_eur: Decimal, est_cost_eur: Decimal, liquidity_usd: Decimal | None,
-                cfg: ShadowConfig | None = None) -> int | None:
+                cfg: ShadowConfig | None = None, qty: Decimal | None = None,
+                sale: dict[str, Any] | None = None) -> int | None:
+    """Open a counterfactual. Default: a hypothetical ticket of `notional_eur` bought at `price_eur`.
+    With `sale` (units actually SOLD by the operational portfolio): `qty` = units sold, `price_eur` =
+    realised net price per unit and `notional_eur` = net proceeds, so horizon multiples > 1 measure the
+    upside forgone by selling and < 1 the loss avoided. Several sales of the same token are tracked."""
     cfg = cfg or ShadowConfig()
     if price_eur is None or price_eur <= 0:
         return None
     cap = cfg.daily_cap.get(cohort, cfg.default_daily_cap)
     if cap is not None and opened_today(conn, cohort, t) >= cap:
         return None
-    exists = conn.execute(select(s.shadow_positions.c.id).where(and_(
-        s.shadow_positions.c.token_id == token_id, s.shadow_positions.c.cohort == cohort,
-        s.shadow_positions.c.closed_at.is_(None)))).first()
-    if exists:
-        return None
-    qty = max(ZERO, notional_eur - est_cost_eur) / price_eur
+    if sale is None:
+        exists = conn.execute(select(s.shadow_positions.c.id).where(and_(
+            s.shadow_positions.c.token_id == token_id, s.shadow_positions.c.cohort == cohort,
+            s.shadow_positions.c.closed_at.is_(None)))).first()
+        if exists:
+            return None
+    if qty is None:
+        qty = max(ZERO, notional_eur - est_cost_eur) / price_eur
     horizons = {label(h): {"status": "pending", "hours": h} for h in cfg.horizons_hours}
+    outcome: dict[str, Any] = {"horizons": horizons, "running": {"max_drawdown": "0"}, "version": 2}
+    if sale is not None:
+        outcome["sale"] = {k: (str(v) if isinstance(v, Decimal) else v) for k, v in sale.items()}
     return int(conn.execute(s.shadow_positions.insert().values(
         token_id=token_id, cohort=cohort, reason=reason[:500], opened_at=t, entry_price_eur=price_eur,
         notional_eur=notional_eur, est_entry_cost_eur=q_eur(est_cost_eur), qty=qty, peak_price_eur=price_eur, peak_at=t,
-        last_price_eur=price_eur, last_liquidity_usd=liquidity_usd, last_observed_at=t,
-        outcome={"horizons": horizons, "running": {"max_drawdown": "0"}, "version": 2},
+        last_price_eur=price_eur, last_liquidity_usd=liquidity_usd, last_observed_at=t, outcome=outcome,
     )).inserted_primary_key[0])
 
 

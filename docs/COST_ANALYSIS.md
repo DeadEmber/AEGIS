@@ -83,6 +83,9 @@ gratuito de Supabase (500 MB) en unos 9 días. Se han aplicado dos mitigaciones:
 | DB operativa (SQLite/PG) | Lo que necesitan el worker y la API | Snapshots a resolución horaria tras 14 días (salvo episodios ±48 h), features 30 días, decisiones triviales 14 días; **solo filas ya archivadas** | Cabe en el plan gratuito de Supabase |
 | Archivo de investigación (Parquet zstd + DuckDB) | Todas las filas de las tablas de investigación a resolución completa, con procedencia y versiones | Indefinida | Disco local o volumen. Compresión medida frente a SQLite: snapshots 50 B/fila (5,9x), features 96 B/fila (21x), decisiones 31 B/fila (11x) |
 
+El backup incremental duplica el espacio (otro disco): de 2 a 4 GB/año en total, sin coste si ya existe un
+segundo disco. La copia fuera del servidor es decisión del propietario.
+
 Estimación con datos reales: de 1 a 2 GB/año, más que lo medido, porque los datos simulados son
 regulares y comprimen mejor. La copia externa (p. ej. otro disco u object storage) está pendiente de
 decisión del propietario.

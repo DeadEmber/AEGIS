@@ -32,6 +32,22 @@
 - (b) Reconstruir reservas y swaps por bloque.
 - (c) Simular con la misma clase `Worker` mediante un `HistoricalGateway` y `ManualClock`.
 
+## Equivalencia temporal con el worker operativo
+
+- `Worker.replay(until, cadence="adaptive", data_resolution_s=r)` usa **la misma** lógica que
+  `run_forever`: `step` y `plan_wake` sobre `next_wake`, con ciclo completo de 300 s y vía rápida
+  ≥ 60 s. Una prueba verifica que ambos producen la misma secuencia de ciclos.
+- Con datos históricos de resolución `r`, el replay despierta solo en la rejilla de datos (redondeo
+  hacia arriba). El gateway sirve la observación del último punto ≤ t, sin look-ahead.
+- Cada resultado (`research.compare.run_variant(...)["replay"]`) declara:
+  - `operational_equivalence`: falso con `cadence="fixed"`.
+  - `fast_dynamics_representative`: falso si el muestreo efectivo supera el intervalo más rápido
+    configurado (60 s), es decir, siempre con velas de 5 min o pasos de 30 min.
+  - `notes`, con la explicación.
+- **No se presentarán como representativos** los resultados sobre explosiones rápidas obtenidos con
+  `fast_dynamics_representative=false`.
+- `cadence="fixed"` se mantiene solo para pruebas mecánicas baratas (invariancias de políticas).
+
 ## Reglas obligatorias para cualquier backtest
 
 - **Point-in-time.** El gateway histórico solo devuelve datos con `observed_at ≤ t`. La función

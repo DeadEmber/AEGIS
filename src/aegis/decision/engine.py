@@ -287,15 +287,46 @@ class DecisionEngine:
             why.append(f"state {c.state}")
         return (not why), why
 
+    def residual_reentry_signal(self, c: Candidate) -> tuple[bool, list[str]]:
+        """Second-wave conditions on a token we still hold as a RESIDUAL (no exit-time conditions apply)."""
+        rc = self.cfg.reentry
+        f = c.features
+        dd, ml, bs = f.get("drawdown_from_ath"), f.get("multiple_from_low_since_ath"), f.get("buyer_share_h1")
+        why = []
+        if dd is None or dd < float(rc.min_drawdown_from_ath):
+            why.append("drawdown")
+        if ml is None or ml < float(rc.min_rebound_from_low):
+            why.append("rebound")
+        if bs is None or bs < float(rc.min_buyer_share_h1):
+            why.append("buyer_share")
+        if c.state not in (MarketState.RECOVERY, MarketState.SECOND_WAVE, MarketState.EXPANSION):
+            why.append("state")
+        if c.security_verdict not in ("PASS", "RISK"):
+            why.append("security")
+        return not why, why
+
     def plan_entries(self, candidates: list[Candidate], slots: dict[str, int], now: dt.datetime, *,
-                     held_tokens: set[int], seed_material: str) -> tuple[list[Decision], list[Decision]]:
-        """Returns (buy decisions, non-buy decisions WATCH/REJECT/WAIT) — both auditable."""
+                     held_tokens: set[int], seed_material: str,
+                     held_residual: frozenset[int] | set[int] = frozenset()) -> tuple[list[Decision], list[Decision]]:
+        """Returns (buy decisions, non-buy decisions WATCH/REJECT/WAIT) — both auditable.
+
+        Held tokens are never bought again (no duplicate purchases, no automatic exposure increase). If a
+        held RESIDUAL shows second-wave conditions, a WATCH tagged `reentry_blocked_by_open_residual` is
+        recorded for research hypothesis E3 — the operational policy is unchanged."""
         buys: list[Decision] = []
         others: list[Decision] = []
         reentry: list[Candidate] = []
         fresh: list[Candidate] = []
         for c in candidates:
             if c.token_id in held_tokens:
+                if c.token_id in held_residual:
+                    ok, _ = self.residual_reentry_signal(c)
+                    if ok:
+                        sc = c.scores.as_dict()
+                        others.append(Decision(Action.WATCH, c.token_id, [
+                            "reentry_blocked_by_open_residual: second-wave signal on a held residual "
+                            "(hypothesis E3; policy unchanged, no exposure added)"], {**sc, "E3": True}
+                        ).finalize({"t": c.token_id, "E3": True, "scores": sc}))
                 continue
             sc = c.scores.as_dict()
             inputs = {"t": c.token_id, "state": str(c.state), "sec": c.security_verdict, "scores": sc,

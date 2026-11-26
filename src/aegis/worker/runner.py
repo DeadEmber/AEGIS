@@ -6,6 +6,7 @@ at any point without losing or duplicating bookings (idempotency keys + per-phas
 from __future__ import annotations
 
 import datetime as dt
+import math
 import threading
 import time
 from collections import defaultdict
@@ -22,7 +23,7 @@ from aegis.allocation.engine import AllocationEngine, market_opportunity_index, 
 from aegis.config import ExecutionMode, RiskLimits, Settings, StrategyConfig
 from aegis.core import logging as alog
 from aegis.core.assets import WSOL_MINT
-from aegis.core.clock import Clock, ensure_utc
+from aegis.core.clock import Clock, ManualClock, ensure_utc
 from aegis.core.hashing import canonical_json
 from aegis.core.money import ONE, ZERO, q_eur, sol_to_lamports
 from aegis.decision.ecv import EmpiricalBaseline
@@ -68,6 +69,14 @@ class TokenIntel:
 
 
 @dataclass
+class LoopState:
+    next_full: dt.datetime
+    last_start: dt.datetime | None = None
+    cycles: int = 0
+    fast_cycles: int = 0
+
+
+@dataclass
 class CycleReport:
     cycle_id: str
     started_at: dt.datetime
@@ -92,6 +101,41 @@ class CycleReport:
         d = dict(self.__dict__)
         d["started_at"] = self.started_at.isoformat()
         return d
+
+
+@dataclass
+class ReplayReport:
+    cadence: str
+    data_resolution_s: int | None
+    cycles: int
+    fast_cycles: int
+    always_reconciled: bool
+    effective_step_s: float | None
+    max_hot_lateness_s: int | None
+    representativeness: dict[str, Any]
+
+    @classmethod
+    def build(cls, cfg: StrategyConfig, reports: list[CycleReport], state: LoopState, cadence: str,
+              resolution: int | None, fixed_step_s: int, full_interval_s: int) -> ReplayReport:
+        mon = cfg.monitoring
+        fastest = min(mon.critical_risk, mon.position_hot, mon.explosion)
+        span = (reports[-1].started_at - reports[0].started_at).total_seconds() if len(reports) > 1 else None
+        hot = [v["max"] for r in reports for k, v in r.scheduling.get("lateness_s", {}).items()
+               if k in ("position_critical", "position_hot", "hot_market")]
+        effective_res = fixed_step_s if cadence == "fixed" else max(resolution or 0, mon.min_cycle_seconds)
+        notes = []
+        if cadence != "adaptive":
+            notes.append(f"fixed {fixed_step_s} s cadence: NOT equivalent to the operational worker "
+                         f"(full cycle {full_interval_s} s + fast lane >= {mon.min_cycle_seconds} s)")
+        if effective_res > fastest:
+            notes.append(f"effective sampling {effective_res} s > fastest configured interval {fastest} s: moves "
+                         "shorter than a few sampling periods (fast explosions, quick reversals) are NOT "
+                         "represented; do not present such results as representative")
+        return cls(cadence, resolution, state.cycles, state.fast_cycles, all(bool(r.reconciliation_ok) for r in reports),
+                   span / (len(reports) - 1) if span else None, max(hot) if hot else None, {
+                       "operational_equivalence": cadence == "adaptive",
+                       "fast_dynamics_representative": cadence == "adaptive" and effective_res <= fastest,
+                       "effective_sampling_s": effective_res, "fastest_configured_interval_s": fastest, "notes": notes})
 
 
 class Worker:
@@ -583,8 +627,9 @@ class Worker:
             slots = budget.slots if ctl.buys_allowed else {"exploration": 0, "selection": 0, "second_chance": 0}
             cands = [self._candidate(ti, sol_eur, eur_usd) for ti in intel.values()]
             if entries:
+                residual = {p.token_id for p in positions if p.status == "RESIDUAL"}
                 buys, others = self.decider.plan_entries(cands, slots, now, held_tokens=held,
-                                                         seed_material=f"{self.cfg.seed}:{cid}")
+                                                         seed_material=f"{self.cfg.seed}:{cid}", held_residual=residual)
             else:
                 buys, others = [], []
 
@@ -636,10 +681,7 @@ class Worker:
                         if res.sale and res.sale.closed:
                             c.execute(update(s.tokens).where(s.tokens.c.id == p.token_id).values(
                                 last_exit_at=now, liquidity_at_exit_usd=ti.obs.liquidity_usd))
-                            shadow.open_shadow(c, token_id=p.token_id, cohort="after_exit", reason=" ".join(d.reasons),
-                                               t=now, price_eur=usd_to_eur(ti.obs.price_usd, eur_usd),
-                                               notional_eur=self.cfg.capital.ticket_eur, est_cost_eur=ZERO,
-                                               liquidity_usd=ti.obs.liquidity_usd, cfg=self.cfg.shadow)
+                        self._shadow_units_sold(c, p, d, res, ti, now)
                     else:
                         rep.rejected_orders += 1
             if ctl.buys_allowed:
@@ -673,6 +715,8 @@ class Worker:
                 rep.decisions += 1
                 if d.action == Action.REJECT:
                     cohort = "rejected"
+                elif d.scores.get("E3"):  # second-wave signal blocked by an open residual (hypothesis E3)
+                    cohort = "reentry_blocked_residual"
                 elif ti.row.entries >= 1:  # former position whose re-entry was discarded
                     cohort = "reentry_discarded"
                 else:
@@ -683,6 +727,24 @@ class Worker:
                         est_cost_eur=Decimal("0.12"), liquidity_usd=ti.obs.liquidity_usd, cfg=self.cfg.shadow):
                     opened += 1
             rep.shadows_opened = opened
+
+    def _shadow_units_sold(self, c: Connection, p: Any, d: Decision, res: Any, ti: TokenIntel, now: dt.datetime) -> None:
+        """Counterfactual of the units actually sold (partial or full): what would they be worth later?
+        Separate from the ledger: realised proceeds stay in the books, this only measures forgone upside."""
+        fill, sale = res.sell, res.sale
+        if fill is None or sale is None or fill.token_qty <= 0 or fill.net_proceeds_eur <= 0:
+            return  # burn-and-close (no proceeds) has no meaningful counterfactual price
+        shadow.open_shadow(
+            c, token_id=p.token_id, cohort="after_exit" if sale.closed else "after_partial_sell",
+            reason=" ".join(d.reasons), t=fill.executed_at, price_eur=fill.net_proceeds_eur / fill.token_qty,
+            notional_eur=fill.net_proceeds_eur, est_cost_eur=ZERO, liquidity_usd=ti.obs.liquidity_usd,
+            cfg=self.cfg.shadow, qty=fill.token_qty,
+            sale={"kind": "units_sold", "position_id": p.id, "execution_id": res.execution_id,
+                  "fraction": d.fraction, "qty_sold": fill.token_qty, "net_proceeds_eur": fill.net_proceeds_eur,
+                  "gross_output_eur": fill.swap_output_eur,
+                  "costs_eur": fill.network_fee_eur + fill.priority_fee_eur + fill.pool_fee_eur + fill.aggregator_fee_eur,
+                  "reference_price_eur": fill.reference_price_eur, "realized_gain_eur": sale.realized_gain,
+                  "closed": sale.closed})
 
     def _position_view(self, c: Connection, p: Any, ti: TokenIntel | None, now: dt.datetime, eur_usd: Decimal) -> PositionView:
         snap = repo.latest_snapshot(c, p.token_id)
@@ -760,29 +822,67 @@ class Worker:
                 c.execute(update(s.source_health).where(s.source_health.c.source == st.source).values(**vals))
 
     # ------------------------------------------------------------------ loop
+    # ------------------------------------------------------------------ loop (shared by live and replay)
+    def step(self, state: LoopState, full_interval_s: int) -> CycleReport | None:
+        """Run ONE cycle at clock.now(): full if the full-cycle time has come, else fast lane."""
+        start = self.clock.now()
+        fast = start < state.next_full
+        rep: CycleReport | None = None
+        try:
+            rep = self.run_cycle(fast=fast)
+        except Exception as exc:  # the loop must survive; the error is recorded, nothing is fabricated
+            alog.event(log, "cycle_failed", 40, error=repr(exc)[:500])
+            with self.engine.begin() as c:
+                repo.record_event(c, s.system_events, self.clock.now(), kind="cycle_failed", severity="error",
+                                  message=repr(exc)[:500], details={"fast": fast})
+        if not fast:
+            state.next_full = start + dt.timedelta(seconds=full_interval_s)
+        state.last_start = start
+        state.cycles += 1
+        state.fast_cycles += fast
+        return rep
+
+    def plan_wake(self, state: LoopState, data_resolution_s: int | None = None) -> dt.datetime:
+        """Next cycle time from the scheduler (next_wake). With historical data of resolution r, waking
+        between grid points cannot see new data, so the wake is rounded UP to the data grid."""
+        wake, _ = self.next_wake(self.clock.now(), state.next_full, state.last_start or self.clock.now())
+        if data_resolution_s:
+            epoch = wake.timestamp()
+            q = math.ceil(epoch / data_resolution_s) * data_resolution_s
+            wake = dt.datetime.fromtimestamp(q, wake.tzinfo)
+        return wake
+
     def run_forever(self, interval_s: int, stop: threading.Event | None = None, max_cycles: int | None = None) -> None:
         """Full cycle every `interval_s`; fast-lane cycles in between at the earliest due high-priority item."""
         self.bootstrap()
         stop = stop or threading.Event()
-        n = 0
-        next_full = self.clock.now()
+        state = LoopState(next_full=self.clock.now())
         while not stop.is_set():
-            start = self.clock.now()
-            fast = start < next_full
-            try:
-                self.run_cycle(fast=fast)
-            except Exception as exc:  # the loop must survive; the error is recorded, nothing is fabricated
-                alog.event(log, "cycle_failed", 40, error=repr(exc)[:500])
-                with self.engine.begin() as c:
-                    repo.record_event(c, s.system_events, self.clock.now(), kind="cycle_failed", severity="error",
-                                      message=repr(exc)[:500], details={"fast": fast})
-            if not fast:
-                next_full = start + dt.timedelta(seconds=interval_s)
-            n += 1
-            if max_cycles is not None and n >= max_cycles:
+            self.step(state, interval_s)
+            if max_cycles is not None and state.cycles >= max_cycles:
                 break
-            wake, _ = self.next_wake(self.clock.now(), next_full, start)
+            wake = self.plan_wake(state)
             stop.wait(max(1.0, (wake - self.clock.now()).total_seconds()))
+
+    def replay(self, until: dt.datetime, *, full_interval_s: int = 300, cadence: str = "adaptive",
+               fixed_step_s: int = 1800, data_resolution_s: int | None = None) -> ReplayReport:
+        """Historical / simulated replay with a ManualClock using the SAME scheduling as run_forever
+        (cadence='adaptive'). cadence='fixed' is kept for cheap mechanical tests and is flagged as NOT
+        equivalent to the operational worker."""
+        if not isinstance(self.clock, ManualClock):
+            raise TypeError("replay requires a ManualClock")
+        state = LoopState(next_full=self.clock.now())
+        reports: list[CycleReport] = []
+        while self.clock.now() < until:
+            rep = self.step(state, full_interval_s)
+            if rep is not None:
+                reports.append(rep)
+            if cadence == "adaptive":
+                wake = self.plan_wake(state, data_resolution_s)
+            else:
+                wake = self.clock.now() + dt.timedelta(seconds=fixed_step_s)
+            self.clock.set(max(wake, self.clock.now() + dt.timedelta(seconds=1)))
+        return ReplayReport.build(self.cfg, reports, state, cadence, data_resolution_s, fixed_step_s, full_interval_s)
 
 
 def _hash_model(m: Any) -> str:

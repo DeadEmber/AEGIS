@@ -11,7 +11,9 @@ const COHORTS: Record<string, string> = {
   not_selected: "Elegibles no comprados (presupuesto o ranking)",
   reentry_discarded: "Reentradas descartadas",
   order_rejected: "Orden rechazada en ejecución",
-  after_exit: "Tras nuestra salida total (ventas prematuras)",
+  after_exit: "Unidades vendidas al cerrar la posición",
+  after_partial_sell: "Unidades vendidas en ventas parciales",
+  reentry_blocked_residual: "Segunda ola con residual abierto (hipótesis E3)",
 };
 
 const STATUS: Record<string, [string, string]> = {

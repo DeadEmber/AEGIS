@@ -158,3 +158,20 @@ def test_budget_pacing_respects_month_and_reserves(engine):  # case 2 & 28
         assert alloc.budget(c, t + dt.timedelta(hours=1)).total_slots == 0
         assert alloc.budget(c, t + dt.timedelta(days=1)).total_slots == 4
     assert T0  # fixture module import sanity
+
+
+def test_residual_reentry_signal_recorded_not_bought():  # audit P2 (2nd): hypothesis E3, policy unchanged
+    eng = DecisionEngine(StrategyConfig())
+    sig = dict(drawdown_from_ath=0.9, multiple_from_low_since_ath=3.0, buyer_share_h1=0.65)
+    c = _cand(1, entries=1, state=MarketState.SECOND_WAVE, **sig)
+    buys, others = eng.plan_entries([c], {"exploration": 3, "selection": 3, "second_chance": 3}, NOW,
+                                    held_tokens={1}, held_residual={1}, seed_material="x")
+    assert buys == [] and len(others) == 1
+    assert others[0].action == Action.WATCH and others[0].scores["E3"] is True
+    assert "reentry_blocked_by_open_residual" in others[0].reasons[0]
+    # held but not residual, or residual without a second-wave signal: nothing recorded (unchanged behaviour)
+    assert eng.plan_entries([c], {"exploration": 3, "selection": 3, "second_chance": 3}, NOW, held_tokens={1},
+                            seed_material="x") == ([], [])
+    weak = _cand(1, entries=1, state=MarketState.SECOND_WAVE)
+    assert eng.plan_entries([weak], {"exploration": 3, "selection": 0, "second_chance": 0}, NOW, held_tokens={1},
+                            held_residual={1}, seed_material="x") == ([], [])

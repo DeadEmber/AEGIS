@@ -88,6 +88,8 @@ Otros comandos:
 - `aegis archive`: archivo de investigación en Parquet verificado. Con
   `aegis archive --query "select count(*) from market_snapshots"` lo consulta con DuckDB.
 - `aegis prune`: retención de la base operativa. Solo borra lo ya archivado y nunca toca la contabilidad.
+- `aegis maintenance`: tarea diaria (archivo → verificación → backup → poda) que no poda ante cualquier
+  fallo. Para el despliegue permanente, ver `docs/DEPLOYMENT.md` y `deploy/systemd/`.
 
 ### Dashboard
 

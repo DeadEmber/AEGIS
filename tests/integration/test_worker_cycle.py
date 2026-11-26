@@ -203,7 +203,8 @@ def test_strategy_comparison_same_conditions():  # case 26
                                mint_overrides={TOKENS["frozen"]: frozen_mint(START)})
 
     base = _cfg()
-    res = {r["strategy"]: r for r in compare([base, hold_only(base), naive_stop(base)], gw, START, hours=60)}
+    res = {r["strategy"]: r for r in compare([base, hold_only(base), naive_stop(base)], gw, START, hours=60,
+                                                      cadence="fixed")}
     assert set(res) == {"aegis-baseline", "buy_and_hold", "stop_loss_0.7", "cash"}
     for name in ("aegis-baseline", "buy_and_hold", "stop_loss_0.7"):
         assert res[name]["always_reconciled"] and res[name]["buys"] == res["aegis-baseline"]["buys"]
@@ -242,7 +243,7 @@ def test_ecv_variant_identical_while_ecv_unavailable():  # experiment E1 harness
                                mint_overrides={TOKENS["frozen"]: frozen_mint(START)})
 
     base = _cfg()
-    res = {r["strategy"]: r for r in compare([base, with_ecv(base)], gw, START, hours=36)}
+    res = {r["strategy"]: r for r in compare([base, with_ecv(base)], gw, START, hours=36, cadence="fixed")}
     a, b = res["aegis-baseline"], res["aegis-ecv"]
     assert a["strategy_hash"] != b["strategy_hash"]
     assert (a["objective_eur"], a["buys"], a["sells"]) == (b["objective_eur"], b["buys"], b["sells"])
@@ -269,7 +270,8 @@ def test_monetisation_grid_runs_under_identical_conditions():  # E2 harness (def
 
     base = _cfg()
     assert len(monetisation_grid(base)) == 11
-    res = {r["strategy"]: r for r in compare([recovery_at(base, "2"), recovery_at(base, None)], gw, START, hours=60)}
+    res = {r["strategy"]: r for r in compare([recovery_at(base, "2"), recovery_at(base, None)], gw, START, hours=60,
+                                                      cadence="fixed")}
     early, none = res["recovery_2"], res["recovery_none"]
     assert early["buys"] == none["buys"]  # identical entries; only the monetisation policy differs
     assert early["always_reconciled"] and none["always_reconciled"]
@@ -277,3 +279,35 @@ def test_monetisation_grid_runs_under_identical_conditions():  # E2 harness (def
     # (on this simulated path no early recovery let the trailing floor sell higher: 4.61 vs 3.37 EUR recycled)
     assert early["recycled_inflows_eur"] != none["recycled_inflows_eur"]
     assert base.exits.capital_recovery_multiple == Decimal("2.0")  # operational default untouched
+
+
+def test_partial_sales_are_tracked_as_units_sold_counterfactuals(tmp_path):
+    """Audit P2 (2nd): after_exit was only opened on a FULL close. Every fill now opens a units-sold
+    counterfactual (qty, executed value, costs) separate from the ledger."""
+    from aegis.research.monetisation import forgone_upside, reinvestment_return
+
+    clock = ManualClock(START)
+    w, _ = _worker(f"sqlite:///{tmp_path}/ps.sqlite", clock)
+    _run(w, clock, hours=60)
+    with w.engine.connect() as c:
+        sells = c.execute(select(s.executions.c.id, s.executions.c.token_qty, s.executions.c.swap_amount_eur,
+                                 s.executions.c.method).join(s.orders)
+                          .where(s.orders.c.side == "SELL", s.orders.c.status == "FILLED")).all()
+        sh = c.execute(select(s.shadow_positions).where(
+            s.shadow_positions.c.cohort.in_(["after_partial_sell", "after_exit"]))).all()
+        ledger_tx = repo.count(c, s.ledger_transactions)
+        by_exec = {r.outcome["sale"]["execution_id"]: r for r in sh}
+        assert {r.cohort for r in sh} >= {"after_partial_sell"}
+        for e in sells:
+            if e.method == "burn_close":
+                continue
+            r = by_exec[e.id]
+            assert r.qty == e.token_qty and Decimal(r.outcome["sale"]["qty_sold"]) == e.token_qty
+            assert Decimal(r.outcome["sale"]["gross_output_eur"]) == e.swap_amount_eur
+            assert r.notional_eur == Decimal(r.outcome["sale"]["net_proceeds_eur"]) > 0
+            assert Decimal(r.outcome["sale"]["costs_eur"]) > 0
+        fu = forgone_upside(c, "24h")
+        assert fu["observed"] + fu["unknown"] + fu["censored"] == len(by_exec)
+        rr = reinvestment_return(c)
+        assert rr["reinvested_from_recycled_eur"] >= 0
+        assert w.portfolio.reconcile(c).ok and repo.count(c, s.ledger_transactions) == ledger_tx  # read-only

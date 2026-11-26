@@ -1,6 +1,6 @@
 # Estado del proyecto (registro persistente entre sesiones)
 
-Última actualización: 2026-11-26 · rama `claude/aegis-foundation` · versión 0.2.2
+Última actualización: 2026-11-26 · rama `claude/aegis-foundation` · versión 0.2.3
 
 ## Resumen
 
@@ -67,6 +67,16 @@ Hallazgo adicional durante la verificación de E2: en la trayectoria simulada, *
 a x2 dejó que el trailing vendiera más tarde y más arriba (4,61 EUR frente a 3,37 EUR de reciclado).
 No se cambia la política: es justo la pregunta que E2 debe responder con datos reales.
 
+## Segunda auditoría sobre 9cfa615 (correcciones en 0.2.3)
+
+| Hallazgo | ¿Reproducido? | Evidencia | Corrección | Pruebas |
+|---|---|---|---|---|
+| P1 Archivado incremental por `max_id` | **Sí (2 vías)** | (a) id 1 con timestamp más reciente que id 2: se archivó id 2 y el 1 quedó fuera para siempre; (b) id 11 confirmado tarde dentro de un rango ya archivado [10,12]: nunca se archivaba y quedaba protegido contra el borrado indefinidamente | Lotes = prefijo **contiguo** de ids elegibles; `reconcile` archiva todo id no cubierto (con evento de calidad de datos); el borrado usa **cobertura por conjunto de ids** verificada | `test_incremental_batches_never_skip_lower_ids`, `test_late_row_inside_archived_range_is_protected_then_reconciled` |
+| P1 Backup y restauración | n/a (diseño) | No existía | `manifest.json` autosuficiente, `archive --verify/--backup/--restore/--import-manifest`, `aegis maintenance` a prueba de fallos, unidades systemd y servicio compose; tablas financieras de solo inserción archivadas | `test_backup_verify_restore_without_database`, `test_manifest_reimport_after_database_loss`, `test_maintenance_is_fail_safe`, `test_financial_tables_are_archived_and_never_pruned` |
+| P1 Equivalencia temporal del backtest | **Sí** | El comparador usaba pasos fijos de 30 min y 0 ciclos rápidos | `Worker.step/plan_wake/replay` compartidos con `run_forever`; cuantización a la resolución de los datos; banderas de representatividad en cada resultado | `test_replay_uses_exactly_the_operational_schedule` (40 ciclos idénticos), `test_replay_respects_data_resolution_and_flags_fast_dynamics`, `test_fixed_cadence_is_flagged_not_equivalent` |
+| P2 Ventas parciales | **Sí** | `after_exit` solo al cierre total | Cada venta abre un contrafactual de las **unidades vendidas** (cantidad, importe neto y bruto, costes, ganancia realizada); métrica de beneficio sacrificado frente a reinversión | `test_partial_sales_are_tracked_as_units_sold_counterfactuals`, `test_units_sold_shadow_measures_forgone_upside` |
+| P2 Reentrada con residual | **Sí** | Los tokens en cartera se excluyen de entradas | Hipótesis E3: se registra WATCH `reentry_blocked_by_open_residual` y la cohorte sombra correspondiente; **sin cambio de política ni más exposición** | `test_residual_reentry_signal_recorded_not_bought` |
+
 ## Limitaciones vigentes
 
 - Sin universo histórico representativo ni backtest 2024–hoy (sesgo de supervivencia de las APIs
@@ -79,8 +89,12 @@ No se cambia la política: es justo la pregunta que E2 debe responder con datos 
 - La vía rápida está limitada por la cuota gratuita de GeckoTerminal (~9 llamadas/min): hasta 90 tokens
   por ciclo rápido (3 llamadas). Con cientos de posiciones calientes simultáneas los 60–180 s no se
   garantizan; el retraso queda medido en `/system`.
-- El archivo vive en disco local (`AEGIS_ARCHIVE_DIR`). Requiere un volumen persistente y una copia
-  externa: la copia externa no está implementada (decisión y posible coste del propietario).
+- El archivo y su backup viven en discos del servidor (`AEGIS_ARCHIVE_DIR`, `AEGIS_BACKUP_DIR`). La
+  tercera copia fuera del servidor es decisión del propietario: AEGIS no contrata servicios.
+- La cobertura del archivo se calcula leyendo la columna `id` de los Parquet en memoria. Es adecuado
+  para millones de filas; para volúmenes mayores convendrá un anti-join en DuckDB.
+- El replay histórico real necesita un `HistoricalGateway` (fuente on-chain pendiente). La lógica de
+  cadencia y resolución ya está integrada y probada con datos simulados en rejilla.
 - Las filas de la cartera sombra anteriores a 0.2.2 se marcan `legacy` y se reevalúan con la nueva
   lógica. Su cierre a 14 días con precios obsoletos no se reconstruye.
 - El valor liquidable de posiciones usa una estimación CPMM (no se pide cotización de venta para cada

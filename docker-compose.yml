@@ -45,6 +45,19 @@ services:
     depends_on:
       migrate: {condition: service_completed_successfully}
 
+  maintenance:  # run daily from the host scheduler: docker compose run --rm maintenance
+    build: .
+    env_file: .env
+    environment:
+      AEGIS_DATABASE_URL: postgresql://aegis:${AEGIS_DB_PASSWORD:-aegis-local-only}@db:5432/aegis
+      AEGIS_ARCHIVE_DIR: /app/var/archive
+      AEGIS_BACKUP_DIR: /backup
+    volumes: [archive:/app/var/archive, "${AEGIS_HOST_BACKUP_DIR:-./backup}:/backup"]
+    command: ["aegis", "maintenance"]
+    profiles: [maintenance]
+    depends_on:
+      db: {condition: service_healthy}
+
 volumes:
   pgdata:
   archive:

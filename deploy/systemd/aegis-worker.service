@@ -1,0 +1,20 @@
+# Permanent paper-trading worker (no real execution exists in AEGIS).
+# Install: copy to /etc/systemd/system/, adjust paths/user, then:
+#   systemctl daemon-reload && systemctl enable --now aegis-worker
+[Unit]
+Description=AEGIS paper-trading worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=aegis
+WorkingDirectory=/opt/aegis
+EnvironmentFile=/opt/aegis/.env
+ExecStartPre=/opt/aegis/.venv/bin/aegis db upgrade
+ExecStart=/opt/aegis/.venv/bin/aegis run
+Restart=always
+RestartSec=30
+# The worker is stateless between cycles: restarts never lose or duplicate bookings.
+
+[Install]
+WantedBy=multi-user.target

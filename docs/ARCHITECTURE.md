@@ -86,6 +86,9 @@ Leyenda: ✅ funcional y probado · 🟡 baseline heurístico funcional · ⏳ p
 | 12 | Borrar solo lo archivado y verificado (SHA-256 canónico + comprobación de ids) | Retención por antigüedad | La auditoría demostró pérdida irreversible de datos de entrenamiento |
 | 13 | Vía rápida del worker (despertar al primer vencimiento de prioridad ≤ 3, mínimo 60 s) | Bajar el ciclo completo a 60 s | El descubrimiento y la seguridad cuestan cuota; solo lo urgente necesita alta frecuencia |
 | 14 | Cartera sombra multihorizonte con ventanas de frescura | Horizonte fijo de 14 días | Las etiquetas de largo plazo (30–365 d) y la censura son imprescindibles para supervivencia y E1/E2 |
+| 15 | Archivado por prefijo contiguo de ids + reconciliación por conjunto de ids | Marca de agua `max_id` | La auditoría demostró omisiones permanentes por corte temporal y confirmaciones tardías |
+| 16 | Backup por ficheros inmutables + `manifest.json` autosuficiente | Snapshots de volumen, servicio gestionado | Coste cero, verificable sin base de datos, incremental y restaurable lote a lote |
+| 17 | Replay con el mismo `step`/`plan_wake` que el worker + resolución de datos explícita | Pasos fijos | La equivalencia temporal es condición para que un backtest sea comparable con la operativa |
 
 ## Entornos
 

@@ -85,18 +85,19 @@ def monetisation_grid(base: StrategyConfig) -> list[StrategyConfig]:
 
 
 def run_variant(cfg: StrategyConfig, gateway_factory: Callable[[ManualClock], MarketDataGateway], start: dt.datetime,
-                hours: float, step_minutes: int = 30) -> dict[str, Any]:
+                hours: float, step_minutes: int = 30, *, cadence: str = "adaptive", full_interval_s: int = 300) -> dict[str, Any]:
+    """Replay one variant. cadence='adaptive' uses the operational scheduler (Worker.replay/next_wake) at the
+    gateway's data resolution; cadence='fixed' steps every `step_minutes` (mechanical tests only)."""
     clock = ManualClock(start)
     eng = make_engine("sqlite://")
     create_all(eng)
+    gw = gateway_factory(clock)
     w = Worker(eng, Settings(database_url="sqlite://", execution_mode=ExecutionMode.HISTORICAL_BACKTEST), cfg,
-               RiskLimits(), gateway_factory(clock), clock)
+               RiskLimits(), gw, clock)
     w.bootstrap()
-    end = start + dt.timedelta(hours=hours)
-    recon = True
-    while clock.now() < end:
-        recon &= bool(w.run_cycle().reconciliation_ok)
-        clock.advance(minutes=step_minutes)
+    rr = w.replay(start + dt.timedelta(hours=hours), full_interval_s=full_interval_s, cadence=cadence,
+                  fixed_step_s=step_minutes * 60, data_resolution_s=getattr(gw, "data_resolution_seconds", None))
+    recon = rr.always_reconciled
     with eng.connect() as c:
         from aegis.accounting import efficiency
 
@@ -113,11 +114,11 @@ def run_variant(cfg: StrategyConfig, gateway_factory: Callable[[ManualClock], Ma
             "recycled_inflows_eur": eff.recycled_inflows_total_eur,
             "purchases_from_recycled_eur": eff.purchases_from_recycled_eur,
             "investments_funded_by_recycled": eff.investments_funded_by_recycled,
-            "capital_turnover": eff.capital_turnover}
+            "capital_turnover": eff.capital_turnover, "replay": rr.__dict__}
 
 
 def compare(variants: list[StrategyConfig], gateway_factory: Callable[[ManualClock], MarketDataGateway],
-            start: dt.datetime, hours: float, step_minutes: int = 30) -> list[dict[str, Any]]:
-    out = [run_variant(v, gateway_factory, start, hours, step_minutes) for v in variants]
+            start: dt.datetime, hours: float, step_minutes: int = 30, *, cadence: str = "adaptive") -> list[dict[str, Any]]:
+    out = [run_variant(v, gateway_factory, start, hours, step_minutes, cadence=cadence) for v in variants]
     out.append({"strategy": "cash", "objective_eur": Decimal(0), "note": "keep contributions in cash"})
     return out

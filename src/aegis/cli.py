@@ -7,7 +7,9 @@
     aegis status | reconcile         print portfolio state / reconciliation report
     aegis export --out DIR           CSV export of the main tables
     aegis api [--port 8000]          serve the dashboard API
-    aegis archive [--query SQL]      export research tables to verified Parquet / query them with DuckDB
+    aegis archive [--query SQL | --verify [DIR] | --backup DIR | --restore DIR]
+                                     verified Parquet archive: export, query (DuckDB), verify, backup, restore
+    aegis maintenance [--backup DIR] daily job: archive -> verify -> backup -> prune (fail-safe)
     aegis prune                      retention on the operational DB (only verified-archived rows)
     aegis kill-switch on|off --reason TEXT
 """
@@ -77,13 +79,11 @@ def cmd_demo(args: argparse.Namespace) -> int:
     strategy.discovery.min_unique_traders_24h = 20
     w = Worker(engine, settings, strategy, limits, gw, clock)
     w.bootstrap()
-    end = start + dt.timedelta(hours=args.hours)
-    while clock.now() < end:
-        w.run_cycle()
-        clock.advance(minutes=30)
+    rr = w.replay(start + dt.timedelta(hours=args.hours), cadence=args.cadence, fixed_step_s=1800,
+                  data_resolution_s=args.resolution)
     with engine.connect() as c:
         st = PortfolioService(strategy).state(c, clock.now(), {})
-    _print({"WARNING": "SIMULATED market — not evidence of profitability", "db": url,
+    _print({"WARNING": "SIMULATED market — not evidence of profitability", "db": url, "replay": rr.__dict__,
             "net_worth_eur_excl_open_positions": st.net_worth_liquidable, "realized_pnl_eur": st.realized_pnl_total,
             "open_positions": st.open_positions, "reconciliation_ok": st.reconciliation.ok})
     return 0
@@ -205,10 +205,60 @@ def cmd_archive(args: argparse.Namespace) -> int:
         cols = [d[0] for d in res.description]
         _print({"columns": cols, "rows": [list(r) for r in res.fetchall()]})
         return 0
+    if args.verify:
+        rep = archive.verify_archive(Path(args.verify) if args.verify != "." else root)
+        _print(rep.__dict__ | {"healthy": rep.healthy})
+        return 0 if rep.healthy else 1
+    if args.backup:
+        out = archive.backup(root, Path(args.backup))
+        _print(out)
+        return 0 if out["failed"] == 0 else 1
+    if args.restore:
+        out = archive.restore(Path(args.restore), root)
+        if args.import_manifest:
+            with make_engine(settings.database_url).begin() as c:
+                out["registered_in_db"] = archive.import_manifest(c, root, dt.datetime.now(UTC))
+        _print(out)
+        return 0 if out["unavailable"] == 0 else 1
     with make_engine(settings.database_url).begin() as c:
         mode = repo.get_flag(c, "data_mode") or "unknown"
         out = archive.archive_all(c, root, dt.datetime.now(UTC), provenance={"data_mode": mode})
     _print([r.__dict__ for r in out] or {"archived": 0})
+    return 0
+
+
+def cmd_maintenance(args: argparse.Namespace) -> int:
+    """Daily job, fail-safe order: archive + reconcile -> verify -> backup -> verify backup -> prune.
+    Any failure stops the sequence BEFORE pruning (nothing is deleted on a doubtful archive)."""
+    from aegis.storage import archive
+    from aegis.storage.retention import prune
+
+    settings, _, _ = _load(args)
+    root = Path(settings.archive_dir)
+    report: dict[str, object] = {}
+    engine = make_engine(settings.database_url)
+    with engine.begin() as c:
+        mode = repo.get_flag(c, "data_mode") or "unknown"
+        report["archived_batches"] = len(archive.archive_all(c, root, dt.datetime.now(UTC), provenance={"data_mode": mode}))
+    ver = archive.verify_archive(root)
+    report["verify"] = ver.__dict__ | {"healthy": ver.healthy}
+    if not ver.healthy:
+        _print(report | {"pruned": "skipped: archive not healthy"})
+        return 1
+    dest = Path(args.backup) if args.backup else settings.backup_dir
+    if dest is not None:
+        report["backup"] = archive.backup(root, Path(dest))
+        bver = archive.verify_archive(Path(dest))
+        report["backup_verify"] = bver.__dict__ | {"healthy": bver.healthy}
+        if report["backup"]["failed"] or not bver.healthy:  # type: ignore[index]
+            _print(report | {"pruned": "skipped: backup not healthy"})
+            return 1
+    elif not args.allow_no_backup:
+        _print(report | {"pruned": "skipped: no backup destination (set AEGIS_BACKUP_DIR or --allow-no-backup)"})
+        return 1
+    with engine.begin() as c:
+        report["pruned"] = prune(c, dt.datetime.now(UTC), root)
+    _print(report)
     return 0
 
 
@@ -246,6 +296,9 @@ def main(argv: list[str] | None = None) -> int:
     d.set_defaults(fn=cmd_db)
     dm = sub.add_parser("demo")
     dm.add_argument("--hours", type=float, default=72)
+    dm.add_argument("--cadence", choices=["adaptive", "fixed"], default="fixed",
+                    help="adaptive = operational scheduler (slower); fixed = 30-min steps (mechanics only)")
+    dm.add_argument("--resolution", type=int, default=None, help="simulated data grid in seconds (e.g. 300)")
     dm.set_defaults(fn=cmd_demo)
     sub.add_parser("probe").set_defaults(fn=cmd_probe)
     sub.add_parser("once").set_defaults(fn=cmd_once)
@@ -263,7 +316,15 @@ def main(argv: list[str] | None = None) -> int:
     a.set_defaults(fn=cmd_api)
     ar = sub.add_parser("archive", help="export new rows to the Parquet research archive (verified)")
     ar.add_argument("--query", help="run a DuckDB SQL query over the archive instead")
+    ar.add_argument("--verify", nargs="?", const=".", help="verify the archive (or a backup dir) against manifest.json")
+    ar.add_argument("--backup", help="incremental verified copy of the archive to this directory")
+    ar.add_argument("--restore", help="restore missing/corrupt batches from this backup directory")
+    ar.add_argument("--import-manifest", action="store_true", help="with --restore: re-register batches in the DB")
     ar.set_defaults(fn=cmd_archive)
+    mt = sub.add_parser("maintenance", help="archive -> verify -> backup -> prune (fail-safe)")
+    mt.add_argument("--backup", help="backup directory (default AEGIS_BACKUP_DIR)")
+    mt.add_argument("--allow-no-backup", action="store_true", help="prune even without a backup destination")
+    mt.set_defaults(fn=cmd_maintenance)
     sub.add_parser("prune", help="apply retention; only rows already in a verified archive batch").set_defaults(fn=cmd_prune)
     k = sub.add_parser("kill-switch")
     k.add_argument("state", choices=["on", "off"])
