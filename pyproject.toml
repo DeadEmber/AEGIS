@@ -34,7 +34,7 @@ aegis = "aegis.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-aegis = ["py.typed", "storage/migrations/*.ini", "storage/migrations/**/*.py", "storage/migrations/*.mako"]
+aegis = ["py.typed", "history/reference/*.json", "storage/migrations/*.ini", "storage/migrations/**/*.py", "storage/migrations/*.mako"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

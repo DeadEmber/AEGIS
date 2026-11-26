@@ -11,7 +11,7 @@ This engine is protective only: it excludes risky markets; it never manipulates 
 from __future__ import annotations
 
 import enum
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from decimal import Decimal
 from typing import Any
 
@@ -68,6 +68,9 @@ class SecurityInputs:
     sell_quote: SwapQuote | None = None
     quotes_attempted: bool = False
     quote_fetch_failed: bool = False
+    # Historical replays built on stated assumptions (e.g. launchpad invariants) cap every finding's evidence
+    # at INDICATOR so that no assumption is ever reported as an on-chain CONFIRMED fact.
+    evidence_ceiling: Evidence | None = None
 
 
 @dataclass(frozen=True)
@@ -110,6 +113,9 @@ class SecurityEngine:
         f += self._concentration(x)
         f += self._liquidity(x)
         f += self._manipulation_indicators(x)
+        if x.evidence_ceiling == Evidence.INDICATOR:
+            f = [replace(i, evidence=Evidence.INDICATOR, message=f"{i.message} [historical assumption: evidence capped]")
+                 if i.evidence == Evidence.CONFIRMED else i for i in f]
         verdict = self._verdict(f)
         h = stable_hash({"token": x.token_address, "findings": [(i.check, str(i.status)) for i in f]})
         return Assessment(verdict, tuple(f), h)

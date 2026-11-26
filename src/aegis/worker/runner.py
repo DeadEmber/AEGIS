@@ -18,6 +18,7 @@ from sqlalchemy import Engine, and_, insert, select, update
 from sqlalchemy.engine import Connection
 
 from aegis import __version__
+from aegis.accounting.ledger import Account
 from aegis.accounting.portfolio import PortfolioService, PositionValuation
 from aegis.allocation.engine import AllocationEngine, market_opportunity_index, regime_multiplier
 from aegis.config import ExecutionMode, RiskLimits, Settings, StrategyConfig
@@ -165,7 +166,7 @@ class Worker:
     # ------------------------------------------------------------------ bootstrap
     def bootstrap(self) -> None:
         now = self.clock.now()
-        data_mode = "simulated" if self.gw.is_simulated else "live"
+        data_mode = getattr(self.gw, "data_mode", None) or ("simulated" if self.gw.is_simulated else "live")
         with self.engine.begin() as c:
             stored = repo.get_flag(c, "data_mode")
             if stored is not None and stored != data_mode:
@@ -322,7 +323,8 @@ class Worker:
             st = self.portfolio.state(c, now, vals)
             if not fast or rep.buys or rep.sells or not st.reconciliation.ok:  # fast lane: snapshot only on change
                 self.portfolio.persist_snapshot(c, st, {"cycle": cid, "mode": str(self.mode),
-                                                        "data": "simulated" if self.gw.is_simulated else "live"})
+                                                        "data": getattr(self.gw, "data_mode", None) or
+                                                        ("simulated" if self.gw.is_simulated else "live")})
             rep.net_worth_eur = str(q_eur(st.net_worth_liquidable))
             rep.reconciliation_ok = st.reconciliation.ok
             if not st.reconciliation.ok:
@@ -480,6 +482,7 @@ class Worker:
                 token_address=ti.address, mint=mint, mint_fetch_failed=mints is None, jup_profile=profiles.get(ti.address),
                 pool=ti.obs, liquidity_eur=liq_eur, buy_quote=buy_q, sell_quote=sell_q,
                 quotes_attempted=sol_eur is not None, quote_fetch_failed=failed,
+                evidence_ceiling=Evidence(c) if (c := getattr(self.gw, "evidence_ceiling", None)) else None,
             ))
             out[ti.token_id] = (a, mint, profiles.get(ti.address))
             rep.security_checks += 1
@@ -685,6 +688,9 @@ class Worker:
                     else:
                         rep.rejected_orders += 1
             if ctl.buys_allowed:
+                # Each buy may only draw what the allocation budget granted per cash account (recycled cap).
+                allowance = {Account.CASH_INVESTMENT: budget.investment_available_today,
+                             Account.CASH_RECYCLED: budget.recycled_available_today}
                 for d in sorted(buys, key=lambda d: -d.priority):
                     ti = intel[d.token_id]
                     did = self._decision_row(c, d, now)
@@ -693,7 +699,9 @@ class Worker:
                         c, token=TokenRef(d.token_id, ti.address, ti.decimals), bucket=d.bucket or "exploration",
                         ticket_eur=self.cfg.capital.ticket_eur, market=self._market(ti, eur_usd, sol_eur),
                         idempotency_key=f"{cid}:{d.token_id}:BUY", decision_id=did, quote=quotes.get((d.token_id, "BUY")),
-                        rent_lamports=self.gw.rent_lamports(ti.row.token_program))
+                        rent_lamports=self.gw.rent_lamports(ti.row.token_program), allowance=allowance)
+                    for acct, amt in res.funding:
+                        allowance[acct] -= amt
                     self._outcome(c, did, res.status)
                     if res.filled:
                         rep.buys += 1

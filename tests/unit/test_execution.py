@@ -168,3 +168,43 @@ def test_roundtrip_cost_of_one_euro_ticket_is_material():
     cm = CostModel(StrategyConfig().execution)
     pct = cm.roundtrip_cost_pct(D(1), D("0.0001"), D(20000), SOL_EUR, 1_488_440)
     assert D("1.5") < pct < D("5")  # ~0.6% pool fees+impact per side + fees; deposit excluded
+
+
+def test_buy_draws_only_the_budgeted_allowance_per_cash_account(engine):
+    """Regression (phase 2): a buy funded 'recycled first' used to drain recycled cash beyond the allocation
+    budget's recycled cap (and with recycling='none'). The allowance makes the split follow the budget."""
+    from aegis.accounting.ledger import Posting
+    cfg, clock, svc, ex, tok = _setup(engine)
+    with engine.begin() as c:
+        svc.ledger.post(c, occurred_at=T0, recorded_at=T0, kind="adjustment", description="test recycled cash",
+                        postings=[Posting(Account.CASH_RECYCLED, D(5)), Posting(Account.PNL_REALIZED, D(-5))],
+                        idempotency_key="seed-recycled")
+        r = ex.buy(c, token=tok, bucket="exploration", ticket_eur=D(1), market=_market(), idempotency_key="k-allow",
+                   quote=_quote(T0), rent_lamports=1_488_440,
+                   allowance={Account.CASH_INVESTMENT: D(1), Account.CASH_RECYCLED: D(0)})
+        assert r.filled and dict(r.funding) == {Account.CASH_INVESTMENT: D(1)}
+        assert svc.ledger.balance(c, Account.CASH_RECYCLED) == D(5)
+        r2 = ex.buy(c, token=tok, bucket="exploration", ticket_eur=D(1), market=_market(), idempotency_key="k-none",
+                    quote=_quote(T0), rent_lamports=1_488_440, allowance={Account.CASH_INVESTMENT: D(0)})
+        assert not r2.filled and r2.reason == "insufficient_budgeted_cash"
+        r3 = ex.buy(c, token=tok, bucket="exploration", ticket_eur=D(1), market=_market(), idempotency_key="k-legacy",
+                    quote=_quote(T0), rent_lamports=1_488_440)
+        assert r3.filled and dict(r3.funding)[Account.CASH_RECYCLED] > 0  # no allowance: recycled first (legacy)
+        rec = svc.reconcile(c)  # the seeded P&L has no disposal behind it: only the balance checks apply here
+        assert rec.checks["trial_balance_zero"]["ok"] and rec.checks["capital_identity"]["ok"]
+
+
+def test_allowance_with_excess_precision_is_rounded_down_to_the_ledger_scale(engine):
+    """Regression: a recycled daily cap (balance x 0.10) carries > 12 decimals; funding must stay quantized."""
+    from aegis.accounting.ledger import Posting
+    cfg, clock, svc, ex, tok = _setup(engine)
+    with engine.begin() as c:
+        svc.ledger.post(c, occurred_at=T0, recorded_at=T0, kind="adjustment", description="test recycled cash",
+                        postings=[Posting(Account.CASH_RECYCLED, D("4.542370929019")),
+                                  Posting(Account.PNL_REALIZED, D("-4.542370929019"))], idempotency_key="seed-r2")
+        allow = {Account.CASH_RECYCLED: D("4.542370929019") * D("0.10"), Account.CASH_INVESTMENT: D(1)}
+        r = ex.buy(c, token=tok, bucket="exploration", ticket_eur=D(1), market=_market(), idempotency_key="k-prec",
+                   quote=_quote(T0), rent_lamports=1_488_440, allowance=allow)
+        assert r.filled, r.reason
+        assert all(amt == amt.quantize(D("1e-12")) for _, amt in r.funding)
+        assert dict(r.funding)[Account.CASH_RECYCLED] == D("0.454237092901")  # rounded DOWN, never above the cap

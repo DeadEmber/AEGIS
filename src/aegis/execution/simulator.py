@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 from typing import Any
 
 from sqlalchemy import insert, select, update
@@ -24,7 +24,7 @@ from aegis.accounting.portfolio import PortfolioService, SaleResult
 from aegis.config import ExecutionMode, StrategyConfig
 from aegis.core.assets import WSOL_MINT
 from aegis.core.clock import Clock, ensure_utc
-from aegis.core.money import LAMPORTS_PER_SOL, ONE, ZERO, from_raw_units, q_eur, q_qty, sol_to_lamports
+from aegis.core.money import EUR_SCALE, LAMPORTS_PER_SOL, ONE, ZERO, from_raw_units, q_eur, q_qty, sol_to_lamports
 from aegis.execution.costs import CostModel
 from aegis.execution.modes import assert_simulated, books_to_operational_ledger
 from aegis.execution.types import BuyFill, FillMethod, MarketContext, SellFill, SwapQuote
@@ -43,6 +43,7 @@ class ExecutionResult:
     buy: BuyFill | None = None
     sell: SellFill | None = None
     sale: SaleResult | None = None
+    funding: tuple[tuple[Account, Decimal], ...] = ()  # cash accounts that paid a BUY
 
     @property
     def filled(self) -> bool:
@@ -134,7 +135,9 @@ class SimulatedExecutionEngine:
     # ------------------------------------------------------------------ BUY
     def buy(self, conn: Connection, *, token: TokenRef, bucket: str, ticket_eur: Decimal, market: MarketContext,
             idempotency_key: str, decision_id: int | None = None, quote: SwapQuote | None = None,
-            rent_lamports: int | None = None) -> ExecutionResult:
+            rent_lamports: int | None = None, allowance: dict[Account, Decimal] | None = None) -> ExecutionResult:
+        """`allowance`: per cash account, the most the ALLOCATION budget lets this buy draw (e.g. the recycled
+        daily cap). Without it any spendable cash may fund the buy (legacy behaviour)."""
         assert_simulated(self.mode)
         if (dup := self._existing(conn, idempotency_key)) is not None:
             return dup
@@ -202,10 +205,15 @@ class SimulatedExecutionEngine:
             return ExecutionResult("SHADOW", order_id, "shadow mode: not booked", buy=fill)
         order = (Account.CASH_RECYCLED, Account.CASH_INVESTMENT) if self.cfg.capital.buy_from_recycled_first \
             else (Account.CASH_INVESTMENT, Account.CASH_RECYCLED)
+        spend = self.portfolio.spendable(conn, at=at)
+        if allowance is not None:  # budget amounts may carry more precision than the ledger: round DOWN
+            spend = {a: min(v, max(ZERO, allowance.get(a, ZERO)).quantize(EUR_SCALE, rounding=ROUND_DOWN))
+                     for a, v in spend.items()}
         try:
-            funding = split_funding(self.portfolio.spendable(conn, at=at), fill.cash_out_eur, order)
+            funding = split_funding(spend, fill.cash_out_eur, order)
         except InsufficientFunds:
-            return self._reject(conn, order_id, "insufficient_spendable_cash")
+            return self._reject(conn, order_id, "insufficient_spendable_cash" if allowance is None
+                                else "insufficient_budgeted_cash")
         ex_id = self._execution_row(
             conn, order_id, at=at, method=method, qty=qty, cash=-fill.cash_out_eur, swap=swap_in,
             eff_price=fill.effective_price_eur, ref_price=market.price_eur, impact=impact, pool_fee=pool_fee,
@@ -215,7 +223,7 @@ class SimulatedExecutionEngine:
         pos_id = self.portfolio.record_buy(conn, token_id=token.id, bucket=bucket, execution_id=ex_id, fill=fill,
                                            funding=funding, idempotency_key=idempotency_key)
         self._finish(conn, order_id, "FILLED")
-        return ExecutionResult("FILLED", order_id, execution_id=ex_id, position_id=pos_id, buy=fill)
+        return ExecutionResult("FILLED", order_id, execution_id=ex_id, position_id=pos_id, buy=fill, funding=tuple(funding))
 
     # ------------------------------------------------------------------ SELL
     def sell(self, conn: Connection, *, token: TokenRef, position_id: int, fraction: Decimal, market: MarketContext,

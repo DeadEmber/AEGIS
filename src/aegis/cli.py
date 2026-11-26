@@ -12,6 +12,12 @@
     aegis maintenance [--backup DIR] daily job: archive -> verify -> backup -> prune (fail-safe)
     aegis prune                      retention on the operational DB (only verified-archived rows)
     aegis kill-switch on|off --reason TEXT
+    aegis datasets list|fetch|verify|coverage [--id ID] [--latency]
+                                     registered historical datasets: pinned revisions, hashes, coverage
+    aegis backtest --dataset ID --preset NAME [...]
+                                     fast historical simulator (production execution + ledger)
+    aegis research phase2 [--ids E4,E5,...] [--render-only]
+                                     reproducible phase-2 experiments -> docs/research/
 """
 
 from __future__ import annotations
@@ -279,6 +285,67 @@ def cmd_kill(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_datasets(args: argparse.Namespace) -> int:
+    from aegis.history import coverage, registry
+    from aegis.research import runner
+
+    base = Settings().datasets_dir
+    specs = [registry.REGISTRY[args.id]] if args.id else list(registry.REGISTRY.values())
+    if args.action == "list":
+        _print([{"id": d.id, "repo": d.repo, "revision": d.revision, "licence": d.licence,
+                 "redistributable": d.redistributable, "period": d.period, "files": len(d.files)} for d in specs])
+        return 0
+    if args.action == "fetch":
+        for d in specs:
+            _print({d.id: registry.fetch(d, base, include_optional=args.optional)})
+        return 0
+    if args.action == "verify":
+        ok = True
+        for d in specs:
+            rep = registry.verify(d, base, include_optional=args.optional)
+            ok &= registry.is_complete(rep)
+            _print({d.id: rep})
+        return 0 if ok else 1
+    for d in specs:  # coverage
+        st = runner.load_store(d.id, str(base), resolution_s=args.resolution)
+        out = coverage.coverage(st)
+        if args.latency:
+            out["latency"] = coverage.latency_study(st)
+        _print(out)
+    return 0
+
+
+def cmd_backtest(args: argparse.Namespace) -> int:
+    from aegis.research import runner
+
+    base = Settings().datasets_dir
+    st = runner.load_store(args.dataset, str(base), args.start, args.end, args.resolution)
+    cap: dict[str, object] = {"recycling": args.recycling, "investment_pacing": args.pacing}
+    if args.ticket:
+        cap["ticket_eur"] = args.ticket
+    r = runner.run_preset(st, args.preset, capital=cap, fee_schedule=args.fee_schedule, latency_s=args.latency,
+                          adverse_bps=args.adverse_bps)
+    out = {"summary": r.summary(), "rejections": r.rejections, "warnings": r.warnings}
+    if args.out:
+        Path(args.out).write_text(json.dumps({**out, "trades": r.trades, "equity": r.equity,
+                                              "closed": [c.__dict__ for c in r.closed], "open_end": r.open_end},
+                                             indent=1, default=str))
+    _print(out)
+    return 0
+
+
+def cmd_research(args: argparse.Namespace) -> int:
+    from aegis.research import phase2
+
+    out = Path(args.out)
+    if not args.render_only:
+        ids = args.ids.split(",") if args.ids else list(phase2.EXPERIMENTS)
+        res = phase2.run(ids, Settings().datasets_dir, out / "results")
+        _print({k: {"title": v["title"], "runtime_s": v["runtime_s"]} for k, v in res.items()})
+    print(phase2.render(out / "results", out / "PHASE2_RESULTS.md"))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--db", default=argparse.SUPPRESS, help="override AEGIS_DATABASE_URL")
@@ -326,6 +393,33 @@ def main(argv: list[str] | None = None) -> int:
     mt.add_argument("--allow-no-backup", action="store_true", help="prune even without a backup destination")
     mt.set_defaults(fn=cmd_maintenance)
     sub.add_parser("prune", help="apply retention; only rows already in a verified archive batch").set_defaults(fn=cmd_prune)
+    ds = sub.add_parser("datasets", help="registered historical datasets (pinned revisions, hashes, coverage)")
+    ds.add_argument("action", choices=["list", "fetch", "verify", "coverage"])
+    ds.add_argument("--id", choices=["pumpfun_corpus", "launchtape"])
+    ds.add_argument("--optional", action="store_true", help="include optional (large) files")
+    ds.add_argument("--latency", action="store_true", help="coverage: add the trade-level latency study")
+    ds.add_argument("--resolution", type=float, default=15.0, help="launchtape observation grid (s)")
+    ds.set_defaults(fn=cmd_datasets)
+    bt = sub.add_parser("backtest", help="fast historical simulator (production execution + ledger)")
+    bt.add_argument("--dataset", required=True, choices=["pumpfun_corpus", "launchtape"])
+    bt.add_argument("--preset", default="strict+trailing")
+    bt.add_argument("--start")
+    bt.add_argument("--end")
+    bt.add_argument("--resolution", type=float, default=15.0)
+    bt.add_argument("--ticket", type=str)
+    bt.add_argument("--recycling", default="full", choices=["none", "limited", "full", "contextual"])
+    bt.add_argument("--pacing", action="store_true", help="pace contributions daily (production default)")
+    bt.add_argument("--fee-schedule", default="pumpswap_measured_2026_10")
+    bt.add_argument("--latency", type=int, default=2)
+    bt.add_argument("--adverse-bps", type=int, default=100)
+    bt.add_argument("--out", help="write full result JSON here")
+    bt.set_defaults(fn=cmd_backtest)
+    rs = sub.add_parser("research", help="reproducible research experiments")
+    rs.add_argument("suite", choices=["phase2"])
+    rs.add_argument("--ids", help="comma-separated experiment ids (default: all)")
+    rs.add_argument("--out", default="docs/research")
+    rs.add_argument("--render-only", action="store_true", help="only rebuild the markdown from existing JSON results")
+    rs.set_defaults(fn=cmd_research)
     k = sub.add_parser("kill-switch")
     k.add_argument("state", choices=["on", "off"])
     k.add_argument("--reason", required=True)

@@ -10,7 +10,7 @@ Datos medidos el 2026-11-26 con fuentes reales. SOL ≈ 64,2–64,5 EUR (CoinGec
 | Depósito de renta, cuenta Token-2022 (170 B) | ≈1.513.800 | 0,0976 | 9,8 % | sí |
 | Comisión base (1 firma) | 5.000 | 0,0003 | 0,03 % | no |
 | Prioridad (supuesto por defecto) | 100.000 | 0,0064 | 0,64 % | no |
-| Comisión de pool (embebida en la cotización) | — | ~0,25 % del swap | — | no |
+| Comisión de pool (embebida en la cotización) | — | **~1,0–1,26 % del swap en PumpSwap** (medido, fase 2) | — | no |
 | Comisión de agregador | 0 (lite) / 10 bps (Ultra) | — | 0–0,1 % | no |
 | Impacto observado (4 compras reales simuladas, 0,9 EUR) | — | — | 0,03 % – 2,36 % | no |
 
@@ -21,6 +21,30 @@ lado frente a la cotización.
 Además, nada más comprar, el patrimonio liquidable de esas 4 posiciones era de 3,51 EUR en posiciones
 más 0,39 EUR en depósitos, frente a 4,00 EUR invertidos: **un 2,5 % se pierde solo por entrar y valorar
 a precio de salida**.
+
+### Comisiones de PumpSwap medidas (fase 2)
+
+Fuente: Launch Tape, 2026-10-10 14:00–16:00 UTC, 417.347 trades con las comisiones de LP, protocolo y
+creador de cada uno. Medianas por tramo de capitalización (en SOL):
+
+| Capitalización (SOL) | LP | Protocolo | Creador | Total por lado |
+|---|---|---|---|---|
+| < 300 | 2 pb | ~94 pb | ~30 pb | ~126 pb |
+| 300–1.200 | 20 pb | 5 pb | ~95 pb | ~121 pb |
+| 1.200–3.000 | 20 pb | 5 pb | ~90 pb | ~116 pb |
+| 3.000–10.000 | 20 pb | 5 pb | ~80 pb | ~106 pb |
+| > 10.000 | 20 pb | 5 pb | ~71 pb | ~96 pb |
+
+El supuesto anterior (`estimated_pool_fee_bps = 30`) era **3–4 veces menor**. Solo en comisiones de
+pool, una ida y vuelta cuesta ~2,1–2,5 % del ticket, a lo que se suman la prioridad, la comisión base y
+el deslizamiento.
+
+- El backtest histórico usa este calendario medido (`pumpswap_measured_2026_10`); con capitalización
+  desconocida aplica el tramo más caro.
+- Para junio y julio el calendario no se observa: es un supuesto explícito, con sensibilidad a 30 y
+  125 pb (experimento E9).
+- `estimated_pool_fee_bps` de producción **no se ha cambiado**, porque las cotizaciones de Jupiter ya
+  incluyen la comisión real. Es decisión del propietario si se sube la estimación de reserva.
 
 ### Sensibilidad a la tarifa de prioridad
 

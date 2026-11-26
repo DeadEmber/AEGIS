@@ -4,7 +4,8 @@
 - Pacing spreads purchases over the month (daily cap = remaining month budget / remaining days ×
   pacing multiplier) so that entries sample many market regimes instead of the first hour of the month.
 - Recycled capital (sale proceeds) is reinvested at most `recycled_daily_fraction` of its balance
-  per day. Reserves (profit, tax) are never spendable.
+  per day (`capital.recycling="limited"`, default). Experimental block-B variants: `none`, `full`
+  (all settled proceeds at once, event-driven) and `contextual`. Reserves (profit, tax) are never spendable.
 - Ticket slots are split across buckets (exploration 40% / selection 45% / second chance 15%).
   Unused slots flow to exploration first so selection never crowds out mass diversification.
 """
@@ -102,16 +103,31 @@ class AllocationEngine:
         inv_balance = self.ledger.balance(conn, Account.CASH_INVESTMENT)
         rec_balance = self.ledger.balance(conn, Account.CASH_RECYCLED)
         remaining_month = max(ZERO, min(cap.monthly_contribution_eur - spent_before_today, inv_balance + spent_today_inv))
-        daily_cap = remaining_month / days_left * cap.pacing_multiplier * regime_multiplier
-        inv_today = max(ZERO, min(daily_cap - spent_today_inv, inv_balance))
-        rec_cap = (rec_balance + spent_today_rec) * cap.recycled_daily_fraction * regime_multiplier
-        rec_today = max(ZERO, min(rec_cap - spent_today_rec, rec_balance))
+        if cap.investment_pacing:
+            daily_cap = remaining_month / days_left * cap.pacing_multiplier * regime_multiplier
+            inv_today = max(ZERO, min(daily_cap - spent_today_inv, inv_balance))
+        else:  # experimental (block B): no pacing of contributions
+            inv_today = max(ZERO, inv_balance)
+        rec_today = self._recycled_today(rec_balance, spent_today_rec, regime_multiplier)
         b = Budget(t, cap.monthly_contribution_eur, spent_month, spent_today_inv, spent_today_rec, inv_today,
                    rec_today, regime_multiplier)
         n = int(((inv_today + rec_today) / cap.ticket_eur).to_integral_value(rounding=ROUND_DOWN))
         n = min(n, self.limits.max_buys_per_cycle)
         b.slots = split_slots(n, self.cfg)
         return b
+
+    def _recycled_today(self, rec_balance: Decimal, spent_today_rec: Decimal, regime_multiplier: Decimal) -> Decimal:
+        """Recycled cash spendable now. Unsettled proceeds are excluded later by `spendable(at=...)`."""
+        cap = self.cfg.capital
+        mode = cap.recycling
+        if mode == "contextual":
+            mode = "full" if regime_multiplier >= 1 else "limited"
+        if mode == "none":
+            return ZERO
+        if mode == "full":
+            return max(ZERO, rec_balance)
+        rec_cap = (rec_balance + spent_today_rec) * cap.recycled_daily_fraction * regime_multiplier
+        return max(ZERO, min(rec_cap - spent_today_rec, rec_balance))
 
 
 def market_opportunity_index(ret_h1: list[float], buyer_share_h1: list[float]) -> float | None:

@@ -2,7 +2,16 @@
 
 ## Estado honesto
 
-**No existe todavía un backtest de mercado real desde el 1 de enero de 2024.** Lo que existe:
+**Fase 2 (2026-11-26):** ya existe un backtest con **datos de mercado reales point-in-time**, pero de
+periodos cortos y ya explorados por el propietario:
+
+- Pumpfun Corpus: 19/06–15/07/2026, post-graduación a ~60 s, seguimiento de 48 h.
+- Launch Tape: 10/10/2026, 14–16 UTC, a nivel de trade, 30 min por token.
+
+Ver «Backtest histórico (fase 2)» más abajo y `docs/research/PHASE2_RESULTS.md`. Sigue sin existir un
+backtest 2024–hoy y **no hay ninguna muestra histórica independiente sin explorar**.
+
+Antes de la fase 2 existía:
 
 1. **Replay determinista** del worker completo sobre un mercado simulado (`research/simmarket.py`).
    Valida la mecánica: que no hay look-ahead, que la contabilidad concilia, que los costes se pagan,
@@ -76,3 +85,69 @@ acumulado, sin sesgo de look-ahead pero corto y con sesgo de muestreo de GeckoTe
 universo histórico on-chain cuando se apruebe la fuente. Las tablas `explosion_events`,
 `recovery_events` y `shadow_positions` ya registran los episodios detectados en vivo. **El objetivo de
 10.000 tokens no se rellenará con datos fabricados.**
+
+
+## Backtest histórico (fase 2)
+
+### Dos niveles (ADR-18)
+
+1. **Fidelidad**: `Worker.replay` + `HistoricalGateway`. Es el worker de producción sin cambios
+   (descubrimiento, seguridad, indicadores, estados, decisiones, ejecución, libro, conciliación y
+   programador) sobre el almacén histórico, con el reloj manual y la resolución real de los datos.
+   - La base queda marcada `data_mode=historical` y nunca se mezcla con datos vivos ni simulados.
+   - Seguridad: ningún dataset trae cuentas de mint históricas. Por defecto es UNKNOWN y bloquea las
+     compras.
+   - Con `launchpad_invariants=True` se usan los invariantes de pump.fun para mints estándar, siempre
+     con evidencia `INDICATOR` y nunca `CONFIRMED`.
+2. **Investigación**: `research.backtest`. Es un simulador por eventos que recorre cada observación en
+   orden temporal.
+   - Las órdenes pasan por el **mismo** `SimulatedExecutionEngine` y se contabilizan con el **mismo**
+     `PortfolioService`/`Ledger` (en SQLite en memoria): partida doble, lotes FIFO, depósitos,
+     liquidación diferida de 15 s, reservas y conciliación al final de cada ejecución.
+   - El presupuesto por cuenta (`allowance`) es el mismo que en el worker.
+
+### Reglas propias del histórico
+
+- **Point-in-time**: las políticas solo reciben `MarketView`, que lanza `LookAheadError` ante cualquier
+  observación posterior a `now`. Los resultados retrospectivos (`postgard_outcomes`, `pregrad outcome`)
+  viven en `HistoricalStore.outcomes` y solo los usan la evaluación y el etiquetado.
+- **Ejecución**:
+  - CPMM exacto sobre las reservas observadas, con reserva virtual de PumpSwap cuando la fuente la da.
+  - En Launch Tape, la orden se ejecuta con el estado del pool **en el instante de decisión + latencia**
+    (nivel de trade).
+  - En el corpus se ejecuta con la última observación (60 s). Es optimista (ver latencia, abajo) y se
+    trata con sensibilidad de deslizamiento adverso de 0, 100, 300 y 600 pb.
+- **Costes**:
+  - Comisión de PumpSwap por tramos medida en Launch Tape (ADR-21).
+  - Comisión base y de prioridad de Solana.
+  - Depósito de renta recuperable.
+  - Deslizamiento adverso del simulador de papel (100 pb por lado por defecto).
+- **Censura**: el corpus deja de observar cada token a las 48 h. Se informan tres patrimonios:
+  - liquidable con las reglas de valoración (los datos obsoletos llevan descuento y pasan a no
+    valorados);
+  - valorado a la última observación;
+  - con las posiciones censuradas a cero.
+- **Monetización imposible**: si el valor liquidable es menor que la venta mínima (0,10 EUR), se mantiene
+  la posición; el depósito sigue siendo recuperable mediante quema y cierre.
+- **Sin muestra independiente**: los dos datasets ya los exploró el propietario.
+  - La validación fuera de muestra es **walk-forward dentro del corpus**, con pliegues de 4 días,
+    entrenamiento expansivo y embargo de 48 h (igual al horizonte máximo de la etiqueta). La purga
+    elimina las etiquetas que se resuelven dentro del embargo.
+  - Launch Tape se usa como control fuera de periodo **con reglas congeladas**, sin reajustar nada, y
+    tampoco es independiente.
+  - La muestra nueva será el **paper trading permanente** desde ahora, con la política preregistrada
+    (STATUS).
+- **Comparaciones múltiples**: cada variante probada en E4–E9 cuenta para la familia de Holm–Bonferroni
+  sobre los p-valores del bootstrap por bloques (3 días) de la diferencia diaria frente al Champion.
+
+### Latencia medida (Launch Tape, 30 s–30 min tras graduar)
+
+| Retraso | Deriva media | Movimiento absoluto p50 | Movimiento absoluto p90 |
+|---|---|---|---|
+| 2 s | −28 pb | 0 pb | 256 pb |
+| 10 s | −140 pb | 39 pb | 776 pb |
+| 60 s | −866 pb | 256 pb | 2.630 pb |
+
+Una observación de 60 s puede estar desfasada hasta una cadencia entera. El 1 % de deslizamiento por
+defecto **solo cubre latencias de pocos segundos**. Por eso los resultados del corpus son una cota
+optimista para las salidas que se disparan en mercados que caen.

@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     strategy_file: Path | None = None
     # Research archive (Parquet). Put it on a persistent volume; it is the long-term research dataset.
     archive_dir: Path = Path("var/archive")
+    # Local copies of registered historical datasets (never committed; see aegis.history.registry).
+    datasets_dir: Path = Path("var/datasets")
     # Backup destination for the archive (another disk / mounted volume). Empty = backups disabled.
     backup_dir: Path | None = None
     log_level: str = "INFO"
@@ -117,8 +119,15 @@ class CapitalConfig(BaseModel):
     buckets: BucketWeights = BucketWeights()
     # Pacing: daily budget = remaining_month_budget / remaining_days * pacing_multiplier.
     pacing_multiplier: Decimal = Decimal("1.5")
-    # Recycled capital is reinvested at most this fraction of its balance per day.
+    # Recycled capital is reinvested at most this fraction of its balance per day (recycling="limited").
     recycled_daily_fraction: Decimal = Decimal("0.10")
+    # Phase 2 block B (experimental; defaults keep the 0.2 behaviour):
+    # - investment_pacing=False: contributions are spendable as soon as they arrive (no daily pacing).
+    # - recycling: none (proceeds idle) | limited (daily fraction above) | full (all SETTLED proceeds
+    #   spendable at once, event-driven) | contextual (full when the opportunity regime is favourable,
+    #   limited otherwise). Settlement (`execution.settlement_seconds`) always applies.
+    investment_pacing: bool = True
+    recycling: str = Field(default="limited", pattern="^(none|limited|full|contextual)$")
     # Profit reserve (strategy policy) as a fraction of each realised gain. Separate from tax reserve.
     profit_reserve_fraction: Decimal = Decimal("0.10")
     # Keep cash:reserve >= estimated tax on YTD realised gains * this factor.
@@ -287,6 +296,41 @@ class TaxConfigES(BaseModel):
     lot_method: str = "FIFO"
 
 
+class PostGradEntryConfig(BaseModel):
+    """Entry rules of the post-graduation research strategies (historical backtests, block A/C).
+
+    Defaults are the 'strict' thresholds reported by the owner's external research (a HYPOTHESIS, not a
+    validated policy). `None` disables a filter. Liquidity / cap in EUR, flow in USD (as the sources)."""
+
+    min_seconds_since_graduation: int = 30
+    max_seconds_since_graduation: int = 3600
+    min_liquidity_eur: Decimal = Decimal("20000")
+    min_market_cap_eur: Decimal | None = Decimal("25000")
+    max_market_cap_eur: Decimal | None = Decimal("5000000")
+    min_volume_m5_usd: Decimal | None = Decimal("1500")
+    min_buy_sell_ratio_m5: Decimal | None = Decimal("1.75")
+    min_price_change_m5_pct: Decimal | None = Decimal("0")
+    # Market context (block C): raw count of tokens that passed the filters in the last 24 h. Known to be
+    # contaminated by dataset coverage, hence the coverage-normalised alternative (opportunities / tokens
+    # graduated and observed in the same 24 h).
+    context_min_opportunities_24h: int | None = None
+    context_min_opportunity_rate_24h: Decimal | None = None
+    max_entries_per_token: int = 1
+
+
+class PostGradExitConfig(BaseModel):
+    """Exit rules for historical research. policy: hold | rules | aegis (production DecisionEngine) | agent."""
+
+    policy: str = Field(default="rules", pattern="^(hold|rules|aegis|agent)$")
+    trailing_activate_multiple: Decimal | None = Decimal("1.0")  # net liquidable multiple of the invested EUR
+    trailing_pct: Decimal | None = Decimal("0.30")
+    stop_loss_multiple: Decimal | None = None
+    take_profit_multiple: Decimal | None = None
+    recovery_multiple: Decimal | None = None  # sell enough to recover the invested EUR, keep the rest
+    residual_fraction: Decimal = Decimal("0.0")  # kept after a trailing exit (0 = full exit)
+    max_hold_seconds: int | None = None
+
+
 class StrategyConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -304,6 +348,8 @@ class StrategyConfig(BaseModel):
     valuation: ValuationConfig = ValuationConfig()
     monitoring: MonitoringConfig = MonitoringConfig()
     tax: TaxConfigES = TaxConfigES()
+    postgrad_entry: PostGradEntryConfig = PostGradEntryConfig()
+    postgrad_exit: PostGradExitConfig = PostGradExitConfig()
 
     @property
     def config_hash(self) -> str:
