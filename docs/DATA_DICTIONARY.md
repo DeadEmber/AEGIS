@@ -183,6 +183,7 @@ Fills simulados con descomposición completa de costes.
 | `deposit_eur` | Dec | no |  |
 | `sol_eur` | Dec | no |  |
 | `latency_ms` | Integer | sí |  |
+| `capital_available_at` | UtcDateTime | sí |  |
 | `details` | JSON | no |  |
 
 ### `explosion_events`
@@ -455,6 +456,7 @@ Posiciones (libro operativo); como máximo una abierta por token (índice parcia
 | `peak_price_eur` | Dec | sí |  |
 | `peak_multiple` | Dec | sí |  |
 | `capital_recovered` | Boolean | no |  |
+| `capital_recovered_at` | UtcDateTime | sí |  |
 | `partial_sells` | Integer | no |  |
 | `last_mark_eur` | Dec | sí |  |
 | `last_liquidation_eur` | Dec | sí |  |
@@ -475,6 +477,11 @@ Predicciones versionadas por modelo.
 | `horizon` | String | no |  |
 | `value` | Dec | no |  |
 | `uncertainty` | Dec | sí |  |
+| `unit` | String | sí |  |
+| `lower` | Dec | sí |  |
+| `upper` | Dec | sí |  |
+| `interval_level` | Dec | sí |  |
+| `status` | String | sí |  |
 
 ### `recovery_events`
 

@@ -149,8 +149,20 @@ class PortfolioService:
         )
 
     # ----------------------------------------------------------------- queries
-    def spendable(self, conn: Connection) -> dict[Account, Decimal]:
-        return {a: self.ledger.balance(conn, a) for a in SPENDABLE_ACCOUNTS}
+    def unsettled_proceeds(self, conn: Connection, at: dt.datetime) -> Decimal:
+        """Sale cash booked to cash:recycled whose settlement (capital_available_at) is after `at`."""
+        rows = conn.execute(select(s.executions.c.cash_eur).where(and_(
+            s.executions.c.capital_available_at.is_not(None), s.executions.c.capital_available_at > ensure_utc(at),
+            s.executions.c.cash_eur > 0)))
+        return sum((r.cash_eur for r in rows), ZERO)
+
+    def spendable(self, conn: Connection, at: dt.datetime | None = None) -> dict[Account, Decimal]:
+        """Cash that can fund purchases at time `at`. Recycled proceeds count only once settled."""
+        out = {a: self.ledger.balance(conn, a) for a in SPENDABLE_ACCOUNTS}
+        if at is not None:
+            pending = self.unsettled_proceeds(conn, at)
+            out[Account.CASH_RECYCLED] = max(ZERO, out[Account.CASH_RECYCLED] - pending)
+        return out
 
     def open_position(self, conn: Connection, token_id: int, book: str = OPERATIONAL):  # type: ignore[no-untyped-def]
         return conn.execute(
@@ -341,6 +353,7 @@ class PortfolioService:
                 qty=new_qty, cost_basis_eur=new_cost, status=status, closed_at=closed_at,
                 realized_proceeds_eur=proceeds_total, realized_pnl_eur=pos.realized_pnl_eur + gain,
                 capital_recovered=recovered, partial_sells=pos.partial_sells + (0 if full else 1),
+                capital_recovered_at=pos.capital_recovered_at or (t if recovered else None),
                 deposit_eur=ZERO if fill.close_account else pos.deposit_eur,
                 deposit_lamports=0 if fill.close_account else pos.deposit_lamports,
             )

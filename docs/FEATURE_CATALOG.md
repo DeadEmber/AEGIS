@@ -37,10 +37,23 @@ Pendiente: evaluar el **valor predictivo incremental** de cada indicador (inform
 en walk-forward) y eliminar los redundantes. Esto requiere etiquetas de resultado, que la cartera
 sombra empieza a producir.
 
+## Indicadores temporales
+
+| Tipo | Elementos | Disponibilidad |
+|---|---|---|
+| **Variables point-in-time** (grupo `temporal`) | `hours_in_state`, `hours_since_explosion_start`, `hours_since_last_exit`, `explosion_count`, `hours_since_ath`, `token_age_hours` | ✅ cada ciclo (duraciones **observadas**, no predichas) |
+| **Etiquetas retrospectivas** (`research/temporal.py`) | tiempo hasta expansión, duración de la explosión, tiempo hasta agotamiento (DISTRIBUTION), hasta colapso, hasta recuperación, hasta segunda ola, duración de la inversión, tiempo hasta recuperar el capital | ✅ con **censura por la derecha**. Nunca son variables en tiempo real |
+| **Base empírica** | Kaplan–Meier poblacional (mediana, P25, P75, IC de Brookmeyer–Crowley) | solo con ≥ 30 eventos observados; si no, `insufficient_data` |
+| **Predicciones temporales por token** | duración esperada de la inversión, tiempo hasta agotamiento o colapso | ⏳ **no disponibles**: requieren modelos de supervivencia y cuantílicos validados (tabla `predictions` con `unit`, `lower`, `upper`, `interval_level` y `status`) |
+| **ECV** | ver STRATEGY_SPECIFICATION §9c | experimental; hoy no disponible |
+
+Los episodios de explosión (`explosion_events`) registran el inicio, el precio base (mínimo de las 24 h
+previas), el pico (precio, momento, multiplicador y liquidez) y el fin.
+
 ## Catálogo generado
 
 <!-- AUTO:BEGIN -->
-Feature set `fs-0.2` — 46 indicadores.
+Feature set `fs-0.2` — 50 indicadores.
 
 | Nombre | Grupo | Unidad | Horizonte | Fuente | Definición | Validez |
 |---|---|---|---|---|---|---|
@@ -86,6 +99,10 @@ Feature set `fs-0.2` — 46 indicadores.
 | `drawdown_from_ath` | survival | fraction | since first seen | token state | 1 - P_now / ATH observed by AEGIS (not the true ATH if the token predates observation) | ATH known |
 | `hours_since_ath` | survival | hours | since ATH | token state | (as_of - ath_at) in hours | ATH time known |
 | `multiple_from_low_since_ath` | survival | ratio | since ATH | token state | P_now / min(P) observed after the ATH | low known |
+| `explosion_count` | temporal | episodes | since first seen | explosion_events | number of explosion episodes observed before as_of (waves) | token state |
+| `hours_in_state` | temporal | hours | since state change | token state | time spent in the market state held before this evaluation | state timestamp known |
+| `hours_since_explosion_start` | temporal | hours | current episode | explosion_events | duration so far of the ACTIVE explosion episode (observed, not predicted) | an episode is open |
+| `hours_since_last_exit` | temporal | hours | since exit | positions | time since AEGIS fully exited this token | token previously held |
 | `holders_count` | wallets | addresses | now | GeckoTerminal/Jupiter | number of holder addresses | profile |
 | `organic_score` | wallets | 0-100 | now | Jupiter | Jupiter organic activity score (proprietary, unvalidated) | profile |
 | `organic_volume_share_h24` | wallets | fraction | h24 | Jupiter stats24h | buyOrganicVolume / buyVolume (Jupiter proprietary organic classifier) | profile with stats24h |

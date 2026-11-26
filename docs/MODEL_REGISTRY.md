@@ -38,6 +38,15 @@ para que cualquier decisión pueda reproducirse.
 3. Vecinos próximos sobre trayectorias normalizadas, para el pattern matching histórico con
    conteos e incertidumbre.
 4. Isolation Forest para anomalías y manipulación.
+5. **Objetivos ampliados por la eficiencia temporal del capital** (los mismos modelos, sin duplicados):
+   - LightGBM con pérdida quantile: P10/P50/P90 del valor liquidable futuro y de la duración de la
+     inversión.
+   - Los modelos de supervivencia anteriores, aplicados también al tiempo hasta recuperar el capital,
+     con las etiquetas censuradas de `research/temporal.py`.
+
+   Sus salidas alimentarían el ECV (`decision/ecv.py`, `source="model"`). Se guardan en `predictions`
+   con `unit`, `lower`, `upper`, `interval_level` y `status="model"`. Solo se usan tras superar el
+   proceso Champion–Challenger y el experimento E1.
 
 Bloqueo de modelos no validados (caso 27): el motor de decisiones solo consume `scoring.heuristics`.
 Ningún camino de código carga un modelo con `status != champion`, y hoy no existe ninguno.

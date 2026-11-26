@@ -25,6 +25,7 @@ from aegis.core.assets import WSOL_MINT
 from aegis.core.clock import Clock, ensure_utc
 from aegis.core.hashing import canonical_json
 from aegis.core.money import ONE, ZERO, q_eur, sol_to_lamports
+from aegis.decision.ecv import EmpiricalBaseline
 from aegis.decision.engine import Action, Candidate, Decision, DecisionEngine, PositionView
 from aegis.discovery.engine import Eligibility, evaluate_eligibility, primary_pool
 from aegis.execution.costs import CostModel
@@ -35,6 +36,7 @@ from aegis.learning import shadow
 from aegis.marketdata.fx import usd_to_eur
 from aegis.marketdata.http import SourceError
 from aegis.marketdata.models import FxRate, PoolObservation, TokenProfile
+from aegis.research import temporal
 from aegis.risk.controls import ControlState, RiskControls
 from aegis.scoring.heuristics import ScoreSet, score_all
 from aegis.security.engine import Evidence, SecurityEngine, SecurityInputs, Status
@@ -46,6 +48,9 @@ from aegis.worker import scheduler
 from aegis.worker.gateway import MarketDataGateway
 
 log = alog.get("aegis.worker")
+# States in which an explosion episode is still running (UNKNOWN = missing data, not an ending).
+EPISODE_CONTINUES = frozenset({MarketState.EXPLOSION, MarketState.DISTRIBUTION, MarketState.SECOND_WAVE,
+                               MarketState.EXPANSION, MarketState.UNKNOWN})
 
 
 @dataclass
@@ -305,9 +310,15 @@ class Worker:
         hist = [h for h in repo.history(c, tid, now) if h.observed_at < obs.observed_at]
         prof = self._profile_obj(repo.latest_profile(c, tid, now))
         as_of = max(now, obs.observed_at)
+        open_ep = c.execute(select(s.explosion_events.c.started_at).where(and_(
+            s.explosion_events.c.token_id == tid, s.explosion_events.c.ended_at.is_(None)))
+            .order_by(s.explosion_events.c.started_at.desc()).limit(1)).first()
         fv = compute(FeatureContext(as_of=as_of, obs=obs, history=hist, profile=prof, token_created_at=row.chain_created_at,
                                     ath_price_usd=row.ath_price_usd, ath_at=row.ath_at,
-                                    low_since_ath_usd=row.low_since_ath_usd, first_seen_at=row.first_seen_at))
+                                    low_since_ath_usd=row.low_since_ath_usd, first_seen_at=row.first_seen_at,
+                                    market_state=row.market_state, market_state_since=row.market_state_since,
+                                    active_explosion_started_at=open_ep.started_at if open_ep else None,
+                                    explosion_count=row.explosion_count, last_exit_at=row.last_exit_at))
         age_min = (now - obs.observed_at).total_seconds() / 60
         sc = score_all(fv, data_age_minutes=max(0.0, age_min))
         elig = evaluate_eligibility(obs, eur_usd, now, self.cfg.discovery, prof, row.chain_created_at)
@@ -421,10 +432,15 @@ class Worker:
             if ti.state in (MarketState.EXPLOSION, MarketState.SECOND_WAVE) and row.market_state not in (
                     "EXPLOSION", "SECOND_WAVE", "DISTRIBUTION"):
                 vals["explosion_count"] = row.explosion_count + 1
+                # base = lowest price observed in the 24 h before the episode (point-in-time)
+                prior = [h.price_usd for h in repo.history(c, ti.token_id, now, hours=24) if h.price_usd]
+                base = min([*prior, ti.obs.price_usd]) if ti.obs.price_usd else (min(prior) if prior else ZERO)
                 c.execute(insert(s.explosion_events).values(
                     token_id=ti.token_id, started_at=now, wave_number=row.explosion_count + 1,
-                    base_price_usd=ti.obs.price_usd or ZERO, peak_price_usd=ti.obs.price_usd,
+                    base_price_usd=base, peak_price_usd=ti.obs.price_usd, peak_at=now,
+                    peak_multiple=(ti.obs.price_usd / base) if ti.obs.price_usd and base else None,
                     peak_liquidity_usd=ti.obs.liquidity_usd))
+        self._track_episode(c, ti, now)
         c.execute(update(s.tokens).where(s.tokens.c.id == ti.token_id).values(**vals))
         # Storage budget: persist feature vectors only when they matter (held, eligible, state change) or hourly.
         last = c.execute(select(s.features.c.as_of).where(s.features.c.token_id == ti.token_id)
@@ -436,6 +452,23 @@ class Worker:
                                                 feature_set_version=ti.features.version,
                                                 values={k: round(v, 8) for k, v in ti.features.values.items()},
                                                 missing=sorted(ti.features.missing)))
+
+    def _track_episode(self, c: Connection, ti: TokenIntel, now: dt.datetime) -> None:
+        """Update the open explosion episode: peak while hot, close it when the move is over."""
+        ep = c.execute(select(s.explosion_events).where(and_(
+            s.explosion_events.c.token_id == ti.token_id, s.explosion_events.c.ended_at.is_(None)))
+            .order_by(s.explosion_events.c.started_at.desc()).limit(1)).first()
+        if ep is None:
+            return
+        vals: dict[str, Any] = {}
+        p = ti.obs.price_usd
+        if p is not None and (ep.peak_price_usd is None or p > ep.peak_price_usd):
+            vals.update(peak_price_usd=p, peak_at=now, peak_liquidity_usd=ti.obs.liquidity_usd,
+                        peak_multiple=(p / ep.base_price_usd) if ep.base_price_usd else None)
+        if ti.state not in EPISODE_CONTINUES:
+            vals["ended_at"] = now
+        if vals:
+            c.execute(update(s.explosion_events).where(s.explosion_events.c.id == ep.id).values(**vals))
 
     # ------------------------------------------------------------------ valuation
     def _liquidation(self, qty: Decimal, price_eur: Decimal | None, liq_eur: Decimal | None) -> Decimal | None:
@@ -480,6 +513,8 @@ class Worker:
         sol_eur = self._sol.rate
         exits: list[tuple[Decision, Any, TokenIntel | None]] = []
         with self.engine.connect() as c:
+            self.decider.estimates = EmpiricalBaseline(c, now, temporal.episodes(c, now),
+                                                       self.cfg.ecv.min_closed_positions)
             positions = self.portfolio.active_positions(c)
             for p in positions:
                 ti = intel.get(p.token_id)
@@ -533,7 +568,8 @@ class Worker:
                     else:
                         res = self.execution.sell(c, token=tok, position_id=p.id, fraction=d.fraction or ONE,
                                                   market=self._market(ti, eur_usd, sol_eur), idempotency_key=key,
-                                                  decision_id=did, quote=quotes.get((p.token_id, "SELL")))
+                                                  decision_id=did, quote=quotes.get((p.token_id, "SELL")),
+                                                  critical=d.critical)
                     self._outcome(c, did, res.status)
                     if res.filled:
                         rep.sells += 1
@@ -615,6 +651,7 @@ class Worker:
             state=state, security_verdict=sec, features=ti.features if ti else None, scores=ti.scores if ti else None,
             last_partial_at=last_sell.executed_at if last_sell else None,
             dead_since=dt.datetime.fromisoformat(dead_since) if dead_since else None, data_stale=stale,
+            opened_at=p.opened_at,
         )
 
     def _candidate(self, ti: TokenIntel, sol_eur: Decimal, eur_usd: Decimal) -> Candidate:

@@ -168,6 +168,10 @@ class ExecutionConfig(BaseModel):
     max_price_impact_pct: Decimal = Decimal("3")
     simulated_latency_seconds: int = 2
     prefer_executable_quotes: bool = True
+    # Seconds after execution until sale proceeds are reusable (Solana 'finalized' ~12.8 s + margin).
+    settlement_seconds: int = 15
+    # Non-critical exits are sized so estimated impact stays below this; critical exits may exceed it.
+    max_exit_impact_pct: Decimal = Decimal("15")
 
 
 class ExitConfig(BaseModel):
@@ -204,6 +208,17 @@ class ReentryConfig(BaseModel):
     min_buyer_share_h1: Decimal = Decimal("0.55")
     min_liquidity_retention: Decimal = Decimal("0.30")
     max_entries_per_token: int = 3
+
+
+class EcvConfig(BaseModel):
+    """Expected Capital Velocity: EXPERIMENTAL. Disabled in decisions until it shows incremental value
+    in the comparison experiment (ROADMAP E1). When enabled it only scales the selection ranking
+    (complementary factor), never decides alone, and has no effect while ECV is unavailable."""
+
+    enabled_in_selection: bool = False
+    weight: Decimal = Decimal("0.25")
+    scale_per_day: Decimal = Decimal("0.01")  # ECV of 1%/day maps to tanh(1) in the complementary factor
+    min_closed_positions: int = 30
 
 
 class ValuationConfig(BaseModel):
@@ -254,6 +269,7 @@ class StrategyConfig(BaseModel):
     execution: ExecutionConfig = ExecutionConfig()
     exits: ExitConfig = ExitConfig()
     reentry: ReentryConfig = ReentryConfig()
+    ecv: EcvConfig = EcvConfig()
     valuation: ValuationConfig = ValuationConfig()
     monitoring: MonitoringConfig = MonitoringConfig()
     tax: TaxConfigES = TaxConfigES()

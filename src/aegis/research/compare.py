@@ -42,6 +42,14 @@ def naive_stop(base: StrategyConfig, multiple: str = "0.7") -> StrategyConfig:
     return c
 
 
+def with_ecv(base: StrategyConfig) -> StrategyConfig:
+    """Same strategy with ECV as a complementary selection factor (experiment E1)."""
+    c = base.model_copy(deep=True)
+    c.name = "aegis-ecv"
+    c.ecv.enabled_in_selection = True
+    return c
+
+
 def run_variant(cfg: StrategyConfig, gateway_factory: Callable[[ManualClock], MarketDataGateway], start: dt.datetime,
                 hours: float, step_minutes: int = 30) -> dict[str, Any]:
     clock = ManualClock(start)

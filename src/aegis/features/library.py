@@ -53,6 +53,11 @@ class FeatureContext:
     ath_at: dt.datetime | None = None
     low_since_ath_usd: Decimal | None = None
     first_seen_at: dt.datetime | None = None
+    market_state: str | None = None  # state known BEFORE this evaluation (point-in-time)
+    market_state_since: dt.datetime | None = None
+    active_explosion_started_at: dt.datetime | None = None
+    explosion_count: int | None = None
+    last_exit_at: dt.datetime | None = None
 
 
 @dataclass
@@ -85,6 +90,10 @@ def feature(name: str, unit: str, horizon: str, source: str, definition: str, va
 
 class Missing(Exception):
     pass
+
+
+class LookAheadError(ValueError):
+    """Raised when any input is newer than `as_of`. Never swallowed."""
 
 
 def _f(x: Decimal | int | None, why: str) -> float:
@@ -220,6 +229,42 @@ def _hist(ctx: FeatureContext) -> float:
     if ctx.first_seen_at is None:
         raise Missing("first_seen_unknown")
     return (ctx.as_of - ctx.first_seen_at).total_seconds() / 3600
+
+
+# ---------------------------------------------------------------- A2. temporal / lifecycle (observed durations only)
+def _hours_since(ctx: FeatureContext, t: dt.datetime | None, why: str) -> float:
+    if t is None:
+        raise Missing(why)
+    if t > ctx.as_of:
+        raise LookAheadError("look-ahead: timestamp after as_of")
+    return (ctx.as_of - t).total_seconds() / 3600
+
+
+@feature("hours_in_state", "hours", "since state change", "token state",
+         "time spent in the market state held before this evaluation", "state timestamp known", "temporal")
+def _his(ctx: FeatureContext) -> float:
+    return _hours_since(ctx, ctx.market_state_since, "state_since_unknown")
+
+
+@feature("hours_since_explosion_start", "hours", "current episode", "explosion_events",
+         "duration so far of the ACTIVE explosion episode (observed, not predicted)", "an episode is open",
+         "temporal")
+def _hse(ctx: FeatureContext) -> float:
+    return _hours_since(ctx, ctx.active_explosion_started_at, "no_active_explosion")
+
+
+@feature("hours_since_last_exit", "hours", "since exit", "positions", "time since AEGIS fully exited this token",
+         "token previously held", "temporal")
+def _hsx(ctx: FeatureContext) -> float:
+    return _hours_since(ctx, ctx.last_exit_at, "never_exited")
+
+
+@feature("explosion_count", "episodes", "since first seen", "explosion_events",
+         "number of explosion episodes observed before as_of (waves)", "token state", "temporal")
+def _exc(ctx: FeatureContext) -> float:
+    if ctx.explosion_count is None:
+        raise Missing("unknown")
+    return float(ctx.explosion_count)
 
 
 # ---------------------------------------------------------------- B. flows & demand quality
@@ -373,9 +418,9 @@ def _ovs(ctx: FeatureContext) -> float:
 
 def compute(ctx: FeatureContext) -> FeatureVector:
     if ctx.obs.observed_at > ctx.as_of:
-        raise ValueError("look-ahead: observation newer than as_of")
+        raise LookAheadError("look-ahead: observation newer than as_of")
     if any(p.observed_at > ctx.as_of for p in ctx.history):
-        raise ValueError("look-ahead: history contains points after as_of")
+        raise LookAheadError("look-ahead: history contains points after as_of")
     fv = FeatureVector(ctx.as_of, FEATURE_SET_VERSION)
     for name, fn in _COMPUTE.items():
         try:
@@ -386,6 +431,8 @@ def compute(ctx: FeatureContext) -> FeatureVector:
                 fv.values[name] = float(v)
         except Missing as m:
             fv.missing[name] = str(m)
+        except LookAheadError:
+            raise
         except (ZeroDivisionError, ValueError, OverflowError) as exc:
             fv.missing[name] = f"error:{type(exc).__name__}"
     return fv

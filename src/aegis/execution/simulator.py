@@ -115,7 +115,12 @@ class SimulatedExecutionEngine:
     def _execution_row(self, conn: Connection, order_id: int, *, at: dt.datetime, method: FillMethod, qty: Decimal,
                        cash: Decimal, swap: Decimal, eff_price: Decimal | None, ref_price: Decimal | None,
                        impact: Decimal | None, pool_fee: Decimal, agg_fee: Decimal, net_fee: Decimal,
-                       prio_fee: Decimal, deposit: Decimal, sol_eur: Decimal, details: dict[str, Any]) -> int:
+                       prio_fee: Decimal, deposit: Decimal, sol_eur: Decimal, details: dict[str, Any],
+                       capital_available_at: dt.datetime | None = None) -> int:
+        requested = conn.execute(select(s.orders.c.requested_at).where(s.orders.c.id == order_id)).scalar_one()
+        details = {**details, "decision_to_execution_ms": int((at - requested).total_seconds() * 1000)}
+        if capital_available_at is not None:
+            details["execution_to_availability_ms"] = int((capital_available_at - at).total_seconds() * 1000)
         return int(conn.execute(insert(s.executions).values(
             order_id=order_id, executed_at=at, method=str(method), token_qty=qty, cash_eur=cash, swap_amount_eur=swap,
             price_eur_effective=None if eff_price is None else q_eur(eff_price),
@@ -123,7 +128,7 @@ class SimulatedExecutionEngine:
             price_impact_pct=None if impact is None else q_eur(impact), pool_fee_eur=q_eur(pool_fee),
             aggregator_fee_eur=q_eur(agg_fee), network_fee_eur=net_fee, priority_fee_eur=prio_fee, deposit_eur=deposit,
             sol_eur=sol_eur, latency_ms=self.cfg.execution.simulated_latency_seconds * 1000,
-            details={"engine": ENGINE_VERSION, **details},
+            capital_available_at=capital_available_at, details={"engine": ENGINE_VERSION, **details},
         )).inserted_primary_key[0])
 
     # ------------------------------------------------------------------ BUY
@@ -198,7 +203,7 @@ class SimulatedExecutionEngine:
         order = (Account.CASH_RECYCLED, Account.CASH_INVESTMENT) if self.cfg.capital.buy_from_recycled_first \
             else (Account.CASH_INVESTMENT, Account.CASH_RECYCLED)
         try:
-            funding = split_funding(self.portfolio.spendable(conn), fill.cash_out_eur, order)
+            funding = split_funding(self.portfolio.spendable(conn, at=at), fill.cash_out_eur, order)
         except InsufficientFunds:
             return self._reject(conn, order_id, "insufficient_spendable_cash")
         ex_id = self._execution_row(
@@ -214,7 +219,8 @@ class SimulatedExecutionEngine:
 
     # ------------------------------------------------------------------ SELL
     def sell(self, conn: Connection, *, token: TokenRef, position_id: int, fraction: Decimal, market: MarketContext,
-             idempotency_key: str, decision_id: int | None = None, quote: SwapQuote | None = None) -> ExecutionResult:
+             idempotency_key: str, decision_id: int | None = None, quote: SwapQuote | None = None,
+             critical: bool = False) -> ExecutionResult:
         assert_simulated(self.mode)
         if (dup := self._existing(conn, idempotency_key)) is not None:
             return dup
@@ -254,8 +260,11 @@ class SimulatedExecutionEngine:
             cp = self.costs.estimate_sell(qty, market.price_eur, market.liquidity_eur)
             gross = q_eur(cp.out_amount * (ONE - self.adverse))
             impact, pool_fee, agg_fee, method = cp.price_impact_pct, cp.pool_fee, ZERO, FillMethod.CPMM_ESTIMATE
+        if not critical and impact is not None and impact > ex_cfg.max_exit_impact_pct:
+            return self._reject(conn, order_id, f"exit_impact_{impact:.1f}pct_exceeds_limit")
         net = self.costs.network_costs(market.sol_eur, new_account=False, rent_lamports=0)
         refund = pos.deposit_eur if full else ZERO
+        details["critical"] = critical
         fill = SellFill(
             executed_at=at, token_qty=qty, swap_output_eur=gross, network_fee_eur=net.base_fee,
             priority_fee_eur=net.priority_fee, deposit_refund_eur=refund, reference_price_eur=market.price_eur,
@@ -271,6 +280,7 @@ class SimulatedExecutionEngine:
             conn, order_id, at=at, method=method, qty=qty, cash=fill.cash_in_eur, swap=gross,
             eff_price=gross / qty, ref_price=market.price_eur, impact=impact, pool_fee=pool_fee, agg_fee=agg_fee,
             net_fee=net.base_fee, prio_fee=net.priority_fee, deposit=refund, sol_eur=market.sol_eur, details=details,
+            capital_available_at=at + dt.timedelta(seconds=ex_cfg.settlement_seconds),
         )
         sale = self.portfolio.record_sell(conn, position_id=position_id, execution_id=ex_id, fill=fill,
                                           idempotency_key=idempotency_key)
@@ -305,6 +315,7 @@ class SimulatedExecutionEngine:
             conn, order_id, at=at, method=FillMethod.BURN_CLOSE, qty=pos.qty, cash=fill.cash_in_eur, swap=ZERO,
             eff_price=ZERO, ref_price=None, impact=None, pool_fee=ZERO, agg_fee=ZERO, net_fee=fee, prio_fee=ZERO,
             deposit=pos.deposit_eur, sol_eur=sol_eur, details={"reason": "write_off_and_recover_rent"},
+            capital_available_at=at + dt.timedelta(seconds=self.cfg.execution.settlement_seconds),
         )
         sale = self.portfolio.record_sell(conn, position_id=position_id, execution_id=ex_id, fill=fill,
                                           idempotency_key=idempotency_key)

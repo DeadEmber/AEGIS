@@ -273,6 +273,27 @@ def create_app(engine: Engine, settings: Settings, strategy: StrategyConfig | No
                 "positions_by_bucket": by_bucket, "tax_estimate_by_year": svc.estimated_tax_by_year(c),
                 "tax_note": "Estimate for provisioning only; not a tax return. See RISK_MANAGEMENT.md."}
 
+    @app.get("/capital/efficiency")
+    def capital_efficiency(c=Depends(conn)) -> dict[str, Any]:  # type: ignore[no-untyped-def]
+        from aegis.accounting import efficiency
+        from aegis.research import temporal
+
+        now = dt.datetime.now(UTC)
+        last = c.execute(select(s.portfolio_snapshots.c.as_of).order_by(desc(s.portfolio_snapshots.c.as_of))
+                         .limit(1)).first()
+        as_of = last.as_of if last is not None else now  # simulated DBs live on their own clock
+        pending = svc.unsettled_proceeds(c, as_of)
+        eff = efficiency.compute(c, as_of, ledger, svc.spendable(c, at=as_of), pending)
+        eps = temporal.episodes(c, as_of)
+        estimates = {k: temporal.empirical_duration(eps, k).__dict__ for k in temporal.EPISODE_KINDS}
+        counts = {k: {"episodes": sum(1 for e in eps if e.kind == k),
+                      "observed": sum(1 for e in eps if e.kind == k and not e.censored)} for k in temporal.EPISODE_KINDS}
+        return {**meta(c), "as_of": as_of, "efficiency": eff.as_dict(), "temporal_estimates": estimates,
+                "episode_counts": counts,
+                "ecv": {"status": "experimental", "enabled_in_selection": strategy.ecv.enabled_in_selection,
+                        "note": "ECV is unavailable until a validated outcome/duration model (or enough closed "
+                                "positions for the population baseline) exists."}}
+
     @app.get("/risk")
     def risk(c=Depends(conn)) -> dict[str, Any]:  # type: ignore[no-untyped-def]
         flags = _rows(c.execute(select(s.control_flags)))

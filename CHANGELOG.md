@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.1 — 2026-11-26 — eficiencia temporal del capital (ampliación incremental)
+
+### Añadido
+- Migración `0002`: `executions.capital_available_at`, `positions.capital_recovered_at` y columnas de
+  intervalo de incertidumbre en `predictions` (`unit`, `lower`, `upper`, `interval_level`, `status`).
+  Lo demás se deriva de las entidades existentes, sin tablas nuevas.
+- `accounting/efficiency.py`: Capital Turnover, Average Holding Period, Capital Recycling Ratio, tiempo
+  hasta recuperar el capital, capital medio comprometido (al coste y liquidable), capital disponible,
+  inversiones financiadas con reciclado y recuperación parcial. Separa aportaciones externas de la
+  reinversión interna.
+- Ejecución: tiempos decisión → ejecución → disponibilidad. Los cobros solo financian compras tras la
+  liquidación (15 s). Límite de impacto del 15 % en salidas no críticas, con aplazamiento si el pool es
+  demasiado estrecho.
+- Indicadores temporales point-in-time, seguimiento completo de los episodios de explosión, etiquetas
+  temporales retrospectivas con censura y una base Kaplan–Meier condicionada a disponer de datos.
+- ECV (Expected Capital Velocity), experimental y desactivado por defecto. Hoy no está disponible
+  porque no hay modelo validado. Variante `aegis-ecv` para el experimento E1.
+- API `/capital/efficiency` y panel de eficiencia en el dashboard.
+
+### Corregido
+- Un timestamp futuro en un indicador se registraba como dato ausente; ahora lanza `LookAheadError`.
+
 ## 0.2.0 — 2026-11-26
 
 Refactorización completa desde el MVP 0.1 (conservado en `legacy/mvp_0_1/`).

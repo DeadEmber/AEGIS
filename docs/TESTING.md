@@ -55,6 +55,25 @@ AEGIS_TEST_POSTGRES_URL=postgresql+psycopg://user@host/db .venv/bin/pytest tests
 | 29 | Verificación del cálculo de rentabilidad | ✅ | `test_performance_tax.py` (TWR, XIRR, MDD, NPR, DCA, IRPF) |
 | 30 | Recuperación tras una caída del sistema | ✅ | `test_restart_without_state_loss`, `test_api_outage_and_stale_data_suspend_buys` |
 
+## Ampliación de eficiencia temporal del capital (2026-11-26)
+
+| Funcionalidad | Prueba(s) |
+|---|---|
+| Decisión → ejecución → disponibilidad del capital | `test_decision_execution_and_capital_availability_are_recorded` |
+| Cobros no reutilizables antes de la liquidación | `test_recycled_proceeds_not_spendable_before_settlement` |
+| Límite de impacto en salidas (no críticas frente a críticas) | `test_exit_impact_limit_rejects_non_critical_but_allows_critical`, `test_decision_engine_caps_non_critical_exits_to_liquidity` |
+| Métricas de eficiencia (turnover, AHP, reciclaje, recuperación, financiación reciclada) | `test_capital_efficiency_metrics` |
+| Recuperación parcial frente a total | `test_partial_recovery_sets_recovery_time_only_when_crossed` |
+| Indicadores temporales point-in-time y look-ahead | `test_temporal_features_point_in_time` |
+| Kaplan–Meier con censura | `test_kaplan_meier_with_censoring` |
+| Etiquetas temporales con censura | `test_temporal_labels_censor_unfinished_episodes` |
+| Sin estimación temporal sin datos suficientes | `test_no_temporal_estimate_without_enough_events` |
+| ECV: fórmula, no disponible y base liquidable | `test_ecv_formula_and_unavailability`, `test_position_ecv_uses_liquidable_value_not_cost` |
+| ECV complementario e inerte si no está disponible | `test_ecv_is_complementary_and_inert_when_unavailable`, `test_ecv_variant_identical_while_ecv_unavailable` |
+| Base empírica exige datos | `test_empirical_baseline_requires_enough_closed_positions` |
+| Episodios de explosión y tiempos de capital en el worker | `test_explosion_episodes_tracked_and_capital_timing_recorded` |
+| Migraciones sin deriva respecto al esquema | `test_migrations_match_metadata` |
+
 ## Pendientes de prueba
 
 - Pruebas de rendimiento: ciclos con más de 5.000 tokens y tiempo por fase.

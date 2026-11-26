@@ -337,6 +337,12 @@ predictions = Table(
     Column("horizon", String(16), nullable=False),
     Column("value", Dec(), nullable=False),
     Column("uncertainty", Dec()),
+    # Temporal / quantile predictions: unit (hours, eur, probability) and an interval at a stated level.
+    Column("unit", String(16)),
+    Column("lower", Dec()),
+    Column("upper", Dec()),
+    Column("interval_level", Dec()),
+    Column("status", String(24)),  # model | empirical_baseline (never fabricated)
 )
 Index("ix_predictions_token_time", predictions.c.token_id, predictions.c.as_of)
 
@@ -417,6 +423,9 @@ executions = Table(
     Column("deposit_eur", Dec(), nullable=False),
     Column("sol_eur", Dec(), nullable=False),
     Column("latency_ms", Integer),
+    # When the cash produced by this execution can be reused (sells: after settlement/finality).
+    # Decision time = orders.requested_at (and decisions.decided_at); execution time = executed_at.
+    _ts("capital_available_at", nullable=True),
     Column("details", JSON, nullable=False, default=dict),
 )
 
@@ -439,6 +448,7 @@ positions = Table(
     Column("peak_price_eur", Dec()),
     Column("peak_multiple", Dec()),
     Column("capital_recovered", Boolean, nullable=False, default=False),
+    _ts("capital_recovered_at", nullable=True),  # first time cumulative net proceeds >= invested
     Column("partial_sells", Integer, nullable=False, default=0),
     Column("last_mark_eur", Dec()),
     Column("last_liquidation_eur", Dec()),

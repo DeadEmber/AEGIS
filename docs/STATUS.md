@@ -40,6 +40,17 @@ Hallazgos con datos reales:
    condicional y retención.
 8. Interpretación de `priceImpactPct` de Jupiter: es una fracción, contrastado con el endpoint Ultra.
 
+## Ampliación 0.2.1: eficiencia temporal del capital
+
+- Implementado: modelo de datos (migración 0002, probada sin deriva y aplicada sobre una base con datos
+  existentes), métricas de eficiencia, tiempos de liquidación, límites de impacto en salidas,
+  indicadores y etiquetas temporales con censura, base Kaplan–Meier condicionada y ECV experimental.
+- **ECV no disponible** en la práctica: no hay modelo validado ni 30 posiciones cerradas. Está
+  desactivado en las decisiones. Con ECV no disponible, la variante `aegis-ecv` da resultados
+  idénticos a la base, verificado por una prueba.
+- Las posiciones creadas antes de la migración 0002 no tienen `capital_recovered_at` ni
+  `capital_available_at` (datos históricos sin ese dato, no se reconstruyen).
+
 ## Limitaciones vigentes
 
 - Sin universo histórico representativo ni backtest 2024–hoy (sesgo de supervivencia de las APIs

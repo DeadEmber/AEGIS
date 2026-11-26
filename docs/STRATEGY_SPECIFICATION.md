@@ -132,3 +132,54 @@ importe neto es < 0,10 EUR, se rechaza.
 | Data Coverage Ratio | indicadores presentes / registrados | fracción | ✅ `MCI.coverage` |
 
 Los indicadores retrospectivos (máximos posteriores, etiquetas) nunca son variables en tiempo real.
+
+## 9b. Eficiencia temporal del capital (implementado, descriptivo)
+
+Fuente: `accounting/efficiency.py`, API `/capital/efficiency`, panel Capital del dashboard. Todo se
+calcula con marcas temporales inmutables (lotes, disposiciones, ejecuciones). No es predictivo.
+
+| Métrica | Definición |
+|---|---|
+| Aportaciones externas | saldo de `equity:contributions` |
+| Reinversión interna | Σ apuntes de `cash:recycled` en transacciones `buy` (la financiación parcial se mide exactamente) |
+| Inversiones financiadas con reciclado | nº de compras con algún apunte de `cash:recycled` (total o parcial) |
+| **Capital Recycling Ratio** | reinversión interna / aportaciones externas |
+| Capital disponible para reinversión | caja de inversión + reciclado **ya liquidado** (los cobros cuentan solo tras `capital_available_at`) |
+| **Capital medio comprometido** | media ponderada en el tiempo de (posiciones al coste + depósitos) entre snapshots; también con valor liquidable |
+| **Capital Turnover** | Σ compras / capital medio comprometido (y anualizado si el periodo es ≥ 1 día) |
+| **Average Holding Period** | media de (venta − adquisición) por disposición FIFO, ponderada por coste; aparte, la antigüedad de los lotes abiertos (censurada) |
+| **Tiempo medio de recuperación del capital** | media y mediana de `capital_recovered_at − opened_at` en las posiciones que han recuperado lo invertido |
+| Recuperación parcial | media de min(1, importes cobrados / invertido) por posición |
+| Decisión → ejecución → disponibilidad | `orders.requested_at` → `executions.executed_at` → `executions.capital_available_at` (finalidad de Solana más un margen: 15 s por defecto) |
+
+Restricciones de liquidez en la ejecución:
+
+- Las salidas no críticas se dimensionan para que el impacto estimado no supere el 15 %
+  (`execution.max_exit_impact_pct`). Si el pool no admite ni una fracción mínima, la salida se aplaza.
+- Las salidas críticas (seguridad, liquidez crítica, deterioro, quema y cierre) pueden superar ese límite.
+
+## 9c. Expected Capital Velocity (ECV) — experimental
+
+```
+ECV = E[beneficio neto] / (capital comprometido × E[duración en días])      unidad: 1/día
+```
+
+- **Posición abierta**: el capital comprometido es el **valor neto liquidable actual**, no el coste
+  histórico. E[beneficio] = E[valor liquidable futuro] − valor actual.
+- **Candidato**: el capital comprometido es el ticket todo incluido, con el depósito inmovilizado.
+- **Estado actual: no disponible.** Solo se calcula con una estimación explícita:
+  - `model`: modelo campeón validado. No existe todavía.
+  - `empirical_baseline`: estadística poblacional con al menos 30 posiciones cerradas y duración
+    Kaplan–Meier. Es idéntica para todos los candidatos, así que no ordena nada; solo sirve para
+    análisis de cartera.
+
+  **Nunca se usan probabilidades ficticias.**
+- **Uso en decisiones**: `ecv.enabled_in_selection=false` por defecto. Si se activa en el experimento
+  E1, solo multiplica el CES de la selección por un factor en [1 − 0,25, 1 + 0,25]
+  (`tanh(ECV / 1 %/día)`). No crea candidatos, no salta filtros ni seguridad, no cambia la
+  exploración ni los buckets y no afecta a las salidas. Mientras el ECV no esté disponible, el
+  factor es neutro: una prueba garantiza resultados idénticos con y sin ECV.
+- En las decisiones de posición se registran `ECV`, `ECV_status` y la **velocidad a fecha**
+  (descriptiva): `(liquidable + cobrado − invertido) / invertido / días`.
+- Se mantienen la diversificación masiva, las microposiciones, el residual sin techo y la exposición a
+  grandes ganadores. No hay motor de alta rotación ni porcentajes de presupuesto ligados al ECV.

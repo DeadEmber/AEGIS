@@ -20,6 +20,7 @@ from __future__ import annotations
 import datetime as dt
 import enum
 import hashlib
+import math
 import random
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -28,7 +29,8 @@ from typing import Any
 from aegis.allocation.engine import reassign_unused
 from aegis.config import StrategyConfig
 from aegis.core.hashing import stable_hash
-from aegis.core.money import ONE, ZERO
+from aegis.core.money import ONE, ZERO, q_eur
+from aegis.decision.ecv import NoEstimates, compute_ecv
 from aegis.discovery.engine import Eligibility
 from aegis.features.library import FeatureVector
 from aegis.scoring.heuristics import ScoreSet
@@ -61,6 +63,7 @@ class Decision:
     fraction: Decimal | None = None
     method: str | None = None  # e.g. 'burn_close'
     priority: float = 0.0
+    critical: bool = False  # critical exits may exceed the exit-impact limit
     inputs_hash: str = ""
 
     def finalize(self, inputs: dict[str, Any]) -> Decision:
@@ -108,22 +111,48 @@ class PositionView:
     last_partial_at: dt.datetime | None
     dead_since: dt.datetime | None
     data_stale: bool
+    opened_at: dt.datetime | None = None
 
 
 class DecisionEngine:
-    def __init__(self, cfg: StrategyConfig):
+    def __init__(self, cfg: StrategyConfig, estimates: NoEstimates | None = None):
         self.cfg = cfg
+        self.estimates = estimates or NoEstimates()
+
+    def _position_time_metrics(self, p: PositionView, now: dt.datetime) -> dict[str, object]:
+        """Ex-post capital velocity to date (descriptive) + ECV on the CURRENT liquidable value."""
+        out: dict[str, object] = {}
+        if p.opened_at is not None and p.liquidation_eur is not None and p.invested_total > 0:
+            days = (now - p.opened_at).total_seconds() / 86400
+            if days > 0:
+                gain = p.liquidation_eur + p.realized_proceeds - p.invested_total
+                out["velocity_to_date_per_day"] = round(float(gain / p.invested_total) / days, 6)
+                out["age_days"] = round(days, 3)
+        ecv = compute_ecv(None if p.liquidation_eur is None else q_eur(p.liquidation_eur),
+                          self.estimates.position(p.position_id), "liquidable_value")
+        out.update(ecv.as_score())
+        return out
 
     # ------------------------------------------------------------------ exits
     def evaluate_position(self, p: PositionView, now: dt.datetime) -> Decision:
         ex = self.cfg.exits
-        sc = p.scores.as_dict() if p.scores else {}
+        sc = {**(p.scores.as_dict() if p.scores else {}), **self._position_time_metrics(p, now)}
         inputs = {"p": p.position_id, "price": p.price_eur, "liq": p.liquidation_eur, "state": str(p.state),
                   "sec": p.security_verdict, "scores": sc, "status": p.status}
 
         def dec(action: Action, reasons: list[str], fraction: Decimal | None = None, method: str | None = None,
-                priority: float = 0.0) -> Decision:
-            return Decision(action, p.token_id, reasons, sc, p.position_id, None, fraction, method, priority).finalize(inputs)
+                priority: float = 0.0, critical: bool = False) -> Decision:
+            if action in (Action.PARTIAL_SELL, Action.FULL_SELL) and not critical and fraction is not None:
+                capped = self._liquidity_cap(p, fraction)
+                if capped < fraction:
+                    if capped <= 0:
+                        return Decision(Action.HOLD, p.token_id, [*reasons, "exit deferred: pool too thin for "
+                                        "the exit-impact limit"], sc, p.position_id).finalize(inputs)
+                    reasons = [*reasons, f"liquidity-capped from {fraction:.3f} to {capped:.3f} "
+                                         f"(max exit impact {self.cfg.execution.max_exit_impact_pct}%)"]
+                    action, fraction = Action.PARTIAL_SELL, capped
+            return Decision(action, p.token_id, reasons, sc, p.position_id, None, fraction, method, priority,
+                            critical=critical).finalize(inputs)
 
         if ex.policy == "hold":
             return dec(Action.HOLD, ["exit policy 'hold' (comparison baseline)"])
@@ -143,16 +172,17 @@ class DecisionEngine:
 
         # 1) security deterioration (e.g. authority re-enabled, sell route disappearing)
         if p.security_verdict == "BLOCK" and sellable:
-            return dec(Action.FULL_SELL, ["security verdict BLOCK on held token: exit while sellable"], ONE, priority=10)
+            return dec(Action.FULL_SELL, ["security verdict BLOCK on held token: exit while sellable"], ONE, priority=10,
+                       critical=True)
         # 2) critical liquidity / collapse
         critical_liq = p.liquidity_eur is not None and p.liquidity_eur < ex.critical_liquidity_eur
         if critical_liq or p.state in (MarketState.UNTRADABLE,):
             if sellable:
                 return dec(Action.FULL_SELL, [f"critical liquidity ({p.liquidity_eur} EUR) or untradable"], ONE,
-                           priority=9)
+                           priority=9, critical=True)
             if p.dead_since and now - p.dead_since >= dt.timedelta(days=ex.dust_close_after_days) and p.deposit_eur > 0:
                 return dec(Action.FULL_SELL, ["dead position: burn tokens and close account to recover rent deposit"],
-                           ONE, method="burn_close", priority=1)
+                           ONE, method="burn_close", priority=1, critical=True)
             return dec(Action.HOLD, ["unsellable at present: waiting (no fabricated exit)"], priority=2)
         if not sellable:
             return dec(Action.HOLD, ["liquidation value below minimum sale; holding"], priority=0.5)
@@ -169,7 +199,8 @@ class DecisionEngine:
                 bs24 is not None and bs24 < float(ex.deterioration_max_buyer_share_h24)
             if p.state == MarketState.COLLAPSE or draining:
                 return dec(Action.FULL_SELL, [f"deteriorating position (state {p.state}, liquidity 24h {drain}, "
-                                              f"buyer share 24h {bs24}): recover remaining capital"], ONE, priority=8)
+                                              f"buyer share 24h {bs24}): recover remaining capital"], ONE, priority=8,
+                           critical=True)
         if ex.stop_loss_multiple is not None and total_multiple <= ex.stop_loss_multiple:
             return dec(Action.FULL_SELL, [f"naive stop-loss at net x{total_multiple:.2f}"], ONE, priority=8)
         # 3) capital recovery at a NET multiple: sell just enough to get the invested EUR back
@@ -207,6 +238,18 @@ class DecisionEngine:
         prs_txt = "n/a" if prs is None else f"{prs:.2f}"
         return dec(Action.HOLD, [f"hold: net x{total_multiple:.2f}, state {p.state}, PRS {prs_txt}"],
                    priority=3 if p.state in HOT_STATES else 1)
+
+    def _liquidity_cap(self, p: PositionView, fraction: Decimal) -> Decimal:
+        """Largest fraction whose CPMM-estimated impact stays below `max_exit_impact_pct`."""
+        if p.liquidity_eur is None or p.price_eur is None or p.price_eur <= 0 or p.qty <= 0:
+            return fraction
+        i = self.cfg.execution.max_exit_impact_pct / 100
+        half = p.liquidity_eur / 2
+        v_max = half * i / (ONE - i)
+        value = fraction * p.qty * p.price_eur
+        if value <= v_max:
+            return fraction
+        return max(ZERO, v_max / (p.qty * p.price_eur))
 
     # ------------------------------------------------------------------ entries
     def _base_rejections(self, c: Candidate) -> list[str]:
@@ -280,13 +323,27 @@ class DecisionEngine:
                 continue
             fresh.append(c)
 
+        ecv_cache: dict[int, dict[str, object]] = {}
+
+        def ecv_of(c: Candidate) -> dict[str, object]:
+            if c.token_id not in ecv_cache:
+                ecv_cache[c.token_id] = compute_ecv(self.cfg.capital.ticket_eur, self.estimates.candidate(c.token_id),
+                                                    "ticket").as_score()
+            return ecv_cache[c.token_id]
+
         def ces(c: Candidate) -> float:  # Capital Efficiency Score (heuristic)
             s = c.scores
             epi = s.epi.value or 0.0
             clean = 1 - (s.mri.value if s.mri.value is not None else 0.5)
             conf = s.mci.value if s.mci.value is not None else 0.5
             cost = float(c.est_roundtrip_cost_pct or Decimal(5))
-            return epi * clean * conf / (1 + cost / 10)
+            base = epi * clean * conf / (1 + cost / 10)
+            e = ecv_of(c)
+            if self.cfg.ecv.enabled_in_selection and e["ECV"] is not None:
+                # complementary factor in [1-w, 1+w]; never the exclusive criterion
+                factor = 1 + float(self.cfg.ecv.weight) * math.tanh(float(e["ECV"]) / float(self.cfg.ecv.scale_per_day))
+                return base * factor
+            return base
 
         # selection: best CES with a minimum heuristic quality
         ranked = sorted((c for c in fresh if ((c.scores.epi.value or 0) >= 0.40 and c.security_verdict == "PASS")
@@ -297,7 +354,7 @@ class DecisionEngine:
         def take(c: Candidate, action: Action, bucket: str, why: str) -> None:
             sc = c.scores.as_dict()
             inputs = {"t": c.token_id, "bucket": bucket, "scores": sc, "seed": seed_material}
-            buys.append(Decision(action, c.token_id, [why], {**sc, "CES": round(ces(c), 4)}, bucket=bucket,
+            buys.append(Decision(action, c.token_id, [why], {**sc, **ecv_of(c), "CES": round(ces(c), 4)}, bucket=bucket,
                                  priority=ces(c)).finalize(inputs))
             chosen.add(c.token_id)
 

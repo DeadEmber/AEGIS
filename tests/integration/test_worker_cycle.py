@@ -207,3 +207,38 @@ def test_strategy_comparison_same_conditions():  # case 26
     assert res["buy_and_hold"]["sells"] == 0 and res["aegis-baseline"]["sells"] > 0
     # on THIS simulated path (rocket x10 then -85%) monetisation beats holding; not a general claim
     assert res["aegis-baseline"]["objective_eur"] > res["buy_and_hold"]["objective_eur"]
+
+
+def test_explosion_episodes_tracked_and_capital_timing_recorded(tmp_path):
+    from aegis.accounting import efficiency
+    from aegis.research.temporal import episodes
+
+    clock = ManualClock(START)
+    w, _ = _worker(f"sqlite:///{tmp_path}/e.sqlite", clock)
+    _run(w, clock, hours=60)
+    with w.engine.connect() as c:
+        rocket = c.execute(select(s.tokens.c.id).where(s.tokens.c.address == TOKENS["rocket"])).scalar_one()
+        ep = c.execute(select(s.explosion_events).where(s.explosion_events.c.token_id == rocket)).first()
+        assert ep is not None and ep.peak_at is not None and ep.ended_at is not None  # x10 run then collapse
+        assert ep.peak_multiple > 2 and ep.started_at < ep.peak_at <= ep.ended_at
+        kinds = {e.kind for e in episodes(c, clock.now()) if e.token_id == rocket}
+        assert {"explosion_duration", "time_to_collapse", "investment_duration"} <= kinds
+        eff = efficiency.compute(c, clock.now(), w.portfolio.ledger)
+        assert eff.avg_execution_to_availability_s == pytest.approx(15.0)
+        assert eff.investments_total >= 3 and eff.capital_turnover is not None
+        hold = c.execute(select(s.decisions.c.scores).where(s.decisions.c.action == "HOLD").limit(1)).scalar_one()
+        assert hold["ECV_status"] == "unavailable" and "velocity_to_date_per_day" in hold
+
+
+def test_ecv_variant_identical_while_ecv_unavailable():  # experiment E1 harness, same economic conditions
+    from aegis.research.compare import compare, with_ecv
+
+    def gw(clock):
+        return ScriptedGateway(script=make_script(START), clock=clock.now, unsellable={TOKENS["honeypot"]},
+                               mint_overrides={TOKENS["frozen"]: frozen_mint(START)})
+
+    base = _cfg()
+    res = {r["strategy"]: r for r in compare([base, with_ecv(base)], gw, START, hours=36)}
+    a, b = res["aegis-baseline"], res["aegis-ecv"]
+    assert a["strategy_hash"] != b["strategy_hash"]
+    assert (a["objective_eur"], a["buys"], a["sells"]) == (b["objective_eur"], b["buys"], b["sells"])

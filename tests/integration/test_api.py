@@ -22,7 +22,7 @@ def test_all_read_endpoints(tmp_path):
     client, w = _client(tmp_path)
     for path in ("/health", "/overview", "/portfolio/history", "/portfolio/positions", "/portfolio/positions?status=closed",
                  "/discovery/tokens", "/decisions", "/peak-radar", "/second-wave", "/capital", "/risk", "/system",
-                 "/shadow", "/intelligence"):
+                 "/shadow", "/intelligence", "/capital/efficiency"):
         r = client.get(path)
         assert r.status_code == 200, (path, r.text[:300])
         assert r.json()["data_mode"] == "simulated", path
@@ -36,6 +36,9 @@ def test_all_read_endpoints(tmp_path):
     if pos:
         detail = client.get(f"/portfolio/positions/{pos[0]['id']}").json()
         assert detail["lots"] and detail["executions"]
+    eff = client.get("/capital/efficiency").json()
+    assert eff["efficiency"]["contributions_total_eur"] == "100.000000000000"
+    assert eff["temporal_estimates"]["explosion_duration"]["status"] in ("insufficient_data", "unavailable")
     tok = client.get("/discovery/tokens").json()["tokens"][0]
     assert client.get(f"/tokens/{tok['id']}").status_code == 200
     assert client.get("/tokens/999999").status_code == 404
