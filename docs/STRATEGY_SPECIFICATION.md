@@ -133,6 +133,21 @@ importe neto es < 0,10 EUR, se rechaza.
 
 Los indicadores retrospectivos (máximos posteriores, etiquetas) nunca son variables en tiempo real.
 
+## 9a. Monitorización: frecuencia configurada frente a efectiva
+
+| Clase | Prioridad | Intervalo configurado | Cómo se cumple |
+|---|---|---|---|
+| Posición crítica | 0 | 60 s | Vía rápida (mín. 60 s entre ciclos) |
+| Posición caliente | 1 | 180 s | Vía rápida |
+| Posición estable | 2 | 600 s | Ciclos completos (300 s) |
+| Mercado caliente (sin posición) | 3 | 120 s | Vía rápida (solo observación; las entradas solo en ciclos completos) |
+| Acumulación, antiguos ganadores, watchlist, frío | 4–9 | 900 s – 6 h | Ciclos completos |
+
+- Un token pedido y no observado sigue vencido, cuenta sus fallos y, si es una posición, sube a
+  prioridad 0 y se consulta en DexScreener como respaldo.
+- El retraso real frente al momento programado y la antigüedad de las observaciones de las posiciones
+  se registran por ciclo (`/system`).
+
 ## 9b. Eficiencia temporal del capital (implementado, descriptivo)
 
 Fuente: `accounting/efficiency.py`, API `/capital/efficiency`, panel Capital del dashboard. Todo se
@@ -167,6 +182,11 @@ ECV = E[beneficio neto] / (capital comprometido × E[duración en días])      u
 - **Posición abierta**: el capital comprometido es el **valor neto liquidable actual**, no el coste
   histórico. E[beneficio] = E[valor liquidable futuro] − valor actual.
 - **Candidato**: el capital comprometido es el ticket todo incluido, con el depósito inmovilizado.
+- **Limitación documentada (auditoría):** la base empírica usaba la **mediana** Kaplan–Meier como
+  duración, y la mediana no es la esperanza E[T] que exige la fórmula. Con tiempos de tenencia con cola
+  a la derecha, E[T] > mediana y el ECV quedaría sobrestimado. La estimación coherente debe ser una
+  esperanza bajo censura (p. ej. RMST(τ) = E[min(T, τ)], ya disponible en `research/temporal.py`),
+  modelada junto con el beneficio, la incertidumbre y las recuperaciones parciales.
 - **Estado actual: no disponible.** Solo se calcula con una estimación explícita:
   - `model`: modelo campeón validado. No existe todavía.
   - `empirical_baseline`: estadística poblacional con al menos 30 posiciones cerradas y duración

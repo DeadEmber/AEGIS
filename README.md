@@ -82,7 +82,12 @@ puede detenerse en cualquier momento (Ctrl+C / SIGTERM) sin perder estado.
 .venv/bin/aegis kill-switch on --reason "pausa manual"
 ```
 
-Otros comandos: `aegis export --out exports/`, `aegis prune` (retención; nunca toca la contabilidad).
+Otros comandos:
+
+- `aegis export --out exports/`.
+- `aegis archive`: archivo de investigación en Parquet verificado. Con
+  `aegis archive --query "select count(*) from market_snapshots"` lo consulta con DuckDB.
+- `aegis prune`: retención de la base operativa. Solo borra lo ya archivado y nunca toca la contabilidad.
 
 ### Dashboard
 

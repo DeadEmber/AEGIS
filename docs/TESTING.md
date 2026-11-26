@@ -74,6 +74,21 @@ AEGIS_TEST_POSTGRES_URL=postgresql+psycopg://user@host/db .venv/bin/pytest tests
 | Episodios de explosión y tiempos de capital en el worker | `test_explosion_episodes_tracked_and_capital_timing_recorded` |
 | Migraciones sin deriva respecto al esquema | `test_migrations_match_metadata` |
 
+## Auditoría independiente (0.2.2)
+
+| Hallazgo | Prueba(s) |
+|---|---|
+| Starvation de posiciones no observadas | `test_unobserved_position_stays_due_escalates_and_counts_misses` |
+| Fuente de respaldo para posiciones | `test_fallback_source_observes_position_missing_from_primary` |
+| Frecuencia configurada frente a efectiva | `test_effective_frequency_fast_lane_vs_full_cycle_only` (sin vía rápida: 300 s; con vía rápida: ≤ 180 s) |
+| Prioridad bajo límite de refrescos | `test_due_order_preserves_position_priority_under_refresh_limit` |
+| Retraso medido contra el momento programado | `test_lateness_is_measured_against_scheduled_time` |
+| Despertar del worker | `test_next_wake_respects_floor_and_full_cycle` |
+| Shadow sin precios obsoletos | `test_stale_price_never_used_as_outcome`, `test_observation_outside_tolerance_window_is_not_used`, `test_legacy_rows_are_not_evaluated_with_stale_prices` |
+| Shadow multihorizonte | `test_fresh_observation_in_window_is_recorded_gross_and_liquidable`, `test_shadow_closes_only_when_every_horizon_resolved`, `test_summary_distinguishes_observed_unknown_censored`, `test_checkpoint_tokens_when_window_open`, `test_daily_caps_per_cohort`, `test_shadow_horizons_and_checkpoints_in_worker` |
+| Archivo antes de borrar | `test_prune_deletes_nothing_without_verified_archive`, `test_archive_is_verified_complete_and_queryable`, `test_prune_after_archive_keeps_research_data_in_archive`, `test_tampered_or_missing_archive_blocks_deletion`, `test_late_row_inside_archived_range_is_not_pruned`, `test_episode_windows_keep_full_resolution` |
+| E2 y ECV | `test_monetisation_grid_runs_under_identical_conditions`, `test_rmst_is_an_expectation_not_the_median` |
+
 ## Pendientes de prueba
 
 - Pruebas de rendimiento: ciclos con más de 5.000 tokens y tiempo por fase.

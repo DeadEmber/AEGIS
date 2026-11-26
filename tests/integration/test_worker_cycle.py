@@ -258,3 +258,22 @@ def test_shadow_horizons_and_checkpoints_in_worker(tmp_path):
     statuses = {r.outcome["horizons"]["24h"]["status"] for r in rows}
     assert "observed" in statuses  # simulated tokens are observed every cycle
     assert all(r.closed_at is None for r in rows)  # 7d..365d still censored
+
+
+def test_monetisation_grid_runs_under_identical_conditions():  # E2 harness (default policy unchanged)
+    from aegis.research.compare import compare, monetisation_grid, recovery_at
+
+    def gw(clock):
+        return ScriptedGateway(script=make_script(START), clock=clock.now, unsellable={TOKENS["honeypot"]},
+                               mint_overrides={TOKENS["frozen"]: frozen_mint(START)})
+
+    base = _cfg()
+    assert len(monetisation_grid(base)) == 11
+    res = {r["strategy"]: r for r in compare([recovery_at(base, "2"), recovery_at(base, None)], gw, START, hours=60)}
+    early, none = res["recovery_2"], res["recovery_none"]
+    assert early["buys"] == none["buys"]  # identical entries; only the monetisation policy differs
+    assert early["always_reconciled"] and none["always_reconciled"]
+    # exit behaviour differs; WHICH policy is better is the experiment's question, not a test assertion
+    # (on this simulated path no early recovery let the trailing floor sell higher: 4.61 vs 3.37 EUR recycled)
+    assert early["recycled_inflows_eur"] != none["recycled_inflows_eur"]
+    assert base.exits.capital_recovery_multiple == Decimal("2.0")  # operational default untouched

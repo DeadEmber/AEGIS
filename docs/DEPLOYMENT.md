@@ -33,7 +33,9 @@ docker compose up -d --build
   ejecución limitado.
 - **Base de datos**: Supabase o PostgreSQL gestionado. `AEGIS_DATABASE_URL=postgresql://...`. Ejecuta
   `aegis db upgrade` en cada despliegue.
-- **Retención**: programa `aegis prune` a diario (cron del VPS o job programado).
+- **Archivo y retención**: programa `aegis archive` y después `aegis prune` a diario (cron del VPS o job
+  programado). `prune` solo borra lo que ya está en un lote verificado. `AEGIS_ARCHIVE_DIR` debe apuntar a
+  un **volumen persistente**: es el dataset de investigación y no se regenera.
 - **API**: el mismo contenedor con `aegis api`, detrás de HTTPS. Con `AEGIS_API_CORS_ORIGINS` apuntando
   al dominio del dashboard.
 - **Dashboard**: Vercel, con `NEXT_PUBLIC_AEGIS_API=https://<api>`.

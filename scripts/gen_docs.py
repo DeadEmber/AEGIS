@@ -48,7 +48,7 @@ TABLE_NOTES = {
     "portfolio_snapshots": "Patrimonio liquidable, compartimentos, KPI base y resultado de conciliación por ciclo.",
     "shadow_positions": "Cartera sombra contrafactual (nunca forma parte del patrimonio).",
     "control_flags": "Kill switch, suspensión de compras, data_mode.",
-    "scheduler_queue": "Cola de prioridad de monitorización adaptativa.",
+    "scheduler_queue": "Cola de monitorización: próximo vencimiento, última observación, retraso y fallos consecutivos.",
     "source_health": "Salud por fuente de datos: llamadas, errores, 429, latencia.",
     "worker_heartbeats": "Latido del worker y resumen del último ciclo.",
     "data_quality_events": "Incidencias de calidad de datos.",
@@ -57,6 +57,7 @@ TABLE_NOTES = {
     "configuration_versions": "Configuraciones (estrategia y límites) por hash de contenido.",
     "audit_logs": "Auditoría de acciones de control.",
     "backtest_runs": "Ejecuciones de backtest con parámetros y limitaciones declaradas.",
+    "archive_batches": "Manifiesto del archivo Parquet: rango de ids, filas, SHA-256 canónico y verificación.",
     "backtest_results": "Métricas por estrategia y ejecución.",
 }
 

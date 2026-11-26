@@ -13,6 +13,13 @@ The value is produced only from an explicit estimate source:
   candidate, so it carries no ranking information — reported for portfolio-level analysis only).
 Otherwise the result is `unavailable`. No fictitious probabilities are ever used.
 
+KNOWN LIMITATION (audit 2026-11-26): the empirical baseline uses the Kaplan-Meier MEDIAN duration. The
+median is not the mathematical expectation E[T] that the ECV formula requires; for right-skewed
+holding times E[T] > median, so the baseline would overstate velocity. A coherent estimate must be an
+expectation under censoring (e.g. restricted mean survival time RMST(tau) = E[min(T, tau)], exposed by
+research.temporal) jointly modelled with profit, uncertainty and partial capital recoveries. ECV stays
+disabled and experimental until then.
+
 Planned extensions (MODEL_REGISTRY / ROADMAP experiment E1): outcome probabilities, expected gain and
 loss magnitudes, temporal uncertainty (quantiles / survival), costs, liquidity, partial capital
 recoveries and the opportunity cost of alternative candidates. ECV is never an exclusive criterion.
@@ -107,7 +114,8 @@ class EmpiricalBaseline(NoEstimates):
         self._est = OutcomeEstimate(
             statistics.fmean(rets), dur.median_hours / 24, (dur.ci_low_hours or 0) / 24 or None,
             (dur.ci_high_hours or 0) / 24 or None, "empirical_baseline", self.n,
-            "population baseline: identical for all candidates; biased towards fast exits")
+            "population baseline: identical for all candidates; biased towards fast exits; duration is the "
+            "Kaplan-Meier MEDIAN, not the expected duration (see research.temporal RMST)")
 
     def candidate(self, token_id: int) -> OutcomeEstimate:
         return self._est

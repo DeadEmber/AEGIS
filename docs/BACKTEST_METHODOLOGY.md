@@ -9,8 +9,12 @@
    que los estados cambian y que las decisiones son reproducibles. **No dice nada sobre rentabilidad.**
 2. **Paper trading con datos reales** (`aegis run`), que acumula un dataset point-in-time sin sesgo de
    look-ahead por construcción (`observed_at`).
-3. **Cartera sombra**, que registra el resultado contrafactual de candidatos rechazados, no
-   seleccionados y posiciones tras la salida.
+3. **Cartera sombra multihorizonte** (24 h, 7, 30, 90, 180 y 365 días): resultados brutos y liquidables
+   con estado observado, desconocido o censurado. Nunca usa precios obsoletos. Cubre candidatos
+   rechazados, no seleccionados, reentradas descartadas y posiciones tras la salida.
+4. **Archivo de investigación** (`aegis archive`, Parquet + DuckDB): todas las observaciones,
+   indicadores y decisiones point-in-time, con procedencia, a resolución completa. Es el dataset sobre el
+   que se entrenarán y validarán los modelos (walk-forward).
 
 ## Por qué no se ha hecho aún el backtest 2024–hoy
 

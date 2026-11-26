@@ -20,7 +20,8 @@
 
 ## Siguiente bloque ejecutable (por prioridad)
 
-1. **Despliegue permanente de paper trading** (fase 12). Elegir VPS/Fly y Supabase. Sin esto no se
+1. **Despliegue permanente de paper trading** (fase 12), con `aegis archive` y `aegis prune` programados a
+   diario y el archivo en un volumen persistente. Elegir VPS/Fly y Supabase. Sin esto no se
    acumula el dataset point-in-time real, que es la única evidencia sin look-ahead disponible hoy.
 2. **`HistoricalGateway` + fuente histórica on-chain** (fases 5 y 9). Decidir el proveedor
    (Helius / Dune / BigQuery / Flipside) y el presupuesto.
@@ -34,6 +35,26 @@
    posiciones calientes.
 
 ## Experimentos de investigación
+
+### E2 — Política de monetización y grandes ganadores (auditoría, P2)
+
+- **Pregunta.** ¿Cuánto beneficio se sacrifica en los grandes ganadores al recuperar capital pronto,
+  frente a lo que aporta reinvertir ese capital reciclado?
+- **Variantes** (`research.compare.monetisation_grid`, mismas condiciones económicas):
+  - Recuperación del capital inicial a x2, x5, x10, x20 o sin recuperación anticipada.
+  - Residual del 5 %, 10 % o 25 %.
+  - Trailing activado a x3, a x10 o desactivado.
+- **Métricas.**
+  - Objetivo neto y patrimonio liquidable.
+  - Capital reciclado y su reinversión (`purchases_from_recycled`).
+  - Inversiones financiadas con reciclado y Capital Turnover.
+  - Beneficio sacrificado en ganadores: pico ejecutable posterior frente al importe obtenido, con la
+    cohorte sombra `after_exit` en sus horizontes.
+  - Top Winner Dependency y probabilidad de beneficio fuera de muestra.
+- **Regla.** La política operativa por defecto (recuperación a x2, residual del 10 %, trailing desde
+  x3) **no se modifica** sin evidencia fuera de muestra con IC 90 % > 0.
+- **Observación preliminar (simulada, no evidencia):** en la trayectoria `rocket`, no recuperar a x2
+  dejó vender más arriba con el trailing (4,61 EUR frente a 3,37 EUR reciclados).
 
 ### E1 — ¿Mejora la eficiencia temporal del capital (ECV) los resultados?
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.2 — 2026-11-26 — correcciones de auditoría independiente
+
+### Corregido (los tres P1 se reprodujeron antes de corregirlos)
+- **Scheduler**: las posiciones no observadas quedaban postergadas para siempre (+600 s por ciclo) y
+  perdían prioridad. Ahora siguen vencidas, escalan a prioridad 0 y tienen fuente de respaldo
+  (DexScreener). La vía rápida hace efectivos los intervalos de 60, 120 y 180 s. El retraso y la
+  antigüedad se registran.
+- **Cartera sombra**: cerraba a 14 días con precios obsoletos. Ahora es multihorizonte (24 h a 365 d)
+  con estados observado, desconocido o censurado, resultado bruto y liquidable, y límites diarios.
+- **Retención**: borraba datos de investigación sin copia. Ahora hay un archivo Parquet verificado
+  (manifiesto `archive_batches`, migración 0003), una poda condicionada a ese archivo y episodios
+  protegidos a resolución completa.
+
+### Añadido
+- `aegis archive [--query SQL]` (DuckDB). Variantes del experimento E2 de monetización. RMST en
+  `research.temporal`.
+
 ## 0.2.1 — 2026-11-26 — eficiencia temporal del capital (ampliación incremental)
 
 ### Añadido

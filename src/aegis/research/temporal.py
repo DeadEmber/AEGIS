@@ -117,6 +117,19 @@ class KMResult:
                 return t
         return None
 
+    def rmst(self, tau: float) -> float:
+        """Restricted mean survival time E[min(T, tau)] = integral of S(t) on [0, tau].
+
+        Unlike the median, RMST is an EXPECTATION (coherent with an expected-value economic function)
+        and remains well-defined under right-censoring when tau <= the largest follow-up time."""
+        area, prev_t, prev_s = 0.0, 0.0, 1.0
+        for t, sv in zip(self.times, self.survival, strict=True):
+            if t >= tau:
+                break
+            area += (t - prev_t) * prev_s
+            prev_t, prev_s = t, sv
+        return area + (tau - prev_t) * prev_s
+
     def median_ci(self, z: float = 1.96) -> tuple[float | None, float | None]:
         """Brookmeyer-Crowley style interval: times where |S(t) - 0.5| <= z * se(t)."""
         inside = [t for t, sv, v in zip(self.times, self.survival, self.variances, strict=True)
@@ -167,6 +180,8 @@ class TemporalEstimate:
     p75_hours: float | None = None
     n: int = 0
     n_events: int = 0
+    rmst_hours: float | None = None  # E[min(T, tau)]: an expectation, unlike the median
+    rmst_tau_hours: float | None = None
     note: str = ""
 
 
@@ -180,6 +195,8 @@ def empirical_duration(eps: list[Episode], kind: str, min_events: int = 30) -> T
                                 note=f"{n_ev} observed events < {min_events} required; no estimate produced")
     km = kaplan_meier([e.hours for e in sel], [not e.censored for e in sel])
     lo, hi = km.median_ci()
+    tau = max(e.hours for e in sel)  # largest follow-up: RMST well-defined up to here
     return TemporalEstimate(kind, "empirical_baseline", km.quantile_time(0.5), lo, hi, km.quantile_time(0.25),
-                            km.quantile_time(0.75), km.n, km.n_events,
-                            note="population-level Kaplan-Meier (right-censored); not a per-token prediction")
+                            km.quantile_time(0.75), km.n, km.n_events, km.rmst(tau), tau,
+                            note="population-level Kaplan-Meier (right-censored); not a per-token prediction. "
+                                 "The median is NOT the expected duration; rmst_hours is E[min(T, tau)].")

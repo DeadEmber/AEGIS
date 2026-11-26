@@ -273,3 +273,14 @@ def test_empirical_baseline_requires_enough_closed_positions(engine):
     est = eb.candidate(1)
     assert est.source == "none" and "insufficient data" in est.note
     assert _fv  # imported helper used by other tests
+
+
+def test_rmst_is_an_expectation_not_the_median():
+    km = kaplan_meier([1, 2, 3, 4], [True] * 4)
+    assert km.rmst(10) == pytest.approx(2.5)  # = mean of fully observed durations
+    assert km.rmst(2) == pytest.approx(1.75)
+    skew = kaplan_meier([1, 1, 1, 1, 20], [True] * 5)
+    assert skew.quantile_time(0.5) == 1 and skew.rmst(20) == pytest.approx(4.8)  # mean >> median
+    many = [Episode(i, "explosion_duration", T0, T0 + dt.timedelta(hours=1 if i % 4 else 20), False) for i in range(40)]
+    est = empirical_duration(many, "explosion_duration", min_events=30)
+    assert est.rmst_hours > est.median_hours

@@ -50,6 +50,40 @@ def with_ecv(base: StrategyConfig) -> StrategyConfig:
     return c
 
 
+def recovery_at(base: StrategyConfig, multiple: str | None) -> StrategyConfig:
+    """E2: recover the initial capital at a given NET multiple (None = no early capital recovery)."""
+    c = base.model_copy(deep=True)
+    c.name = f"recovery_{multiple or 'none'}"
+    c.exits.capital_recovery_multiple = Decimal(10**9) if multiple is None else Decimal(multiple)
+    return c
+
+
+def residual_variant(base: StrategyConfig, fraction: str) -> StrategyConfig:
+    """E2: minimum residual kept after monetisation (fraction of the original quantity)."""
+    c = base.model_copy(deep=True)
+    c.name = f"residual_{fraction}"
+    c.exits.residual_min_fraction = Decimal(fraction)
+    return c
+
+
+def trailing_variant(base: StrategyConfig, activate: str | None, k: str = "3.0", min_pct: str = "0.25",
+                     max_pct: str = "0.60") -> StrategyConfig:
+    """E2: trailing floor rules (activate=None disables the trailing floor)."""
+    c = base.model_copy(deep=True)
+    c.name = f"trailing_{activate or 'off'}_{k}_{min_pct}_{max_pct}"
+    c.exits.trailing_activate_multiple = Decimal(10**9) if activate is None else Decimal(activate)
+    c.exits.trailing_vol_k, c.exits.trailing_min_pct, c.exits.trailing_max_pct = Decimal(k), Decimal(min_pct), Decimal(max_pct)
+    return c
+
+
+def monetisation_grid(base: StrategyConfig) -> list[StrategyConfig]:
+    """E2 grid. The operational default is NOT changed by running it."""
+    out = [recovery_at(base, m) for m in ("2", "5", "10", "20", None)]
+    out += [residual_variant(base, f) for f in ("0.05", "0.10", "0.25")]
+    out += [trailing_variant(base, a) for a in ("3", "10", None)]
+    return out
+
+
 def run_variant(cfg: StrategyConfig, gateway_factory: Callable[[ManualClock], MarketDataGateway], start: dt.datetime,
                 hours: float, step_minutes: int = 30) -> dict[str, Any]:
     clock = ManualClock(start)
@@ -64,14 +98,22 @@ def run_variant(cfg: StrategyConfig, gateway_factory: Callable[[ManualClock], Ma
         recon &= bool(w.run_cycle().reconciliation_ok)
         clock.advance(minutes=step_minutes)
     with eng.connect() as c:
+        from aegis.accounting import efficiency
+
         last = c.execute(select(s.portfolio_snapshots).order_by(s.portfolio_snapshots.c.id.desc()).limit(1)).first()
+        eff = efficiency.compute(c, clock.now())
         buys = c.execute(select(s.orders).where(s.orders.c.side == "BUY", s.orders.c.status == "FILLED")).all()
         sells = c.execute(select(s.orders).where(s.orders.c.side == "SELL", s.orders.c.status == "FILLED")).all()
     eng.dispose()
     return {"strategy": cfg.name, "strategy_hash": cfg.config_hash, "objective_eur": last.objective_eur,
             "net_worth_eur": last.net_worth_liquidable_eur, "realized_pnl_eur": last.realized_pnl_total_eur,
             "costs_eur": last.costs_total_eur, "buys": len(buys), "sells": len(sells),
-            "open_positions": last.open_positions, "always_reconciled": recon}
+            "open_positions": last.open_positions, "always_reconciled": recon,
+            "positions_liquidation_eur": last.positions_liquidation_eur,
+            "recycled_inflows_eur": eff.recycled_inflows_total_eur,
+            "purchases_from_recycled_eur": eff.purchases_from_recycled_eur,
+            "investments_funded_by_recycled": eff.investments_funded_by_recycled,
+            "capital_turnover": eff.capital_turnover}
 
 
 def compare(variants: list[StrategyConfig], gateway_factory: Callable[[ManualClock], MarketDataGateway],

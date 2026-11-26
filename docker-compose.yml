@@ -27,6 +27,8 @@ services:
     environment:
       AEGIS_DATABASE_URL: postgresql://aegis:${AEGIS_DB_PASSWORD:-aegis-local-only}@db:5432/aegis
       AEGIS_EXECUTION_MODE: PAPER_TRADING
+      AEGIS_ARCHIVE_DIR: /app/var/archive
+    volumes: [archive:/app/var/archive]
     command: ["aegis", "run"]
     restart: unless-stopped
     depends_on:
@@ -45,3 +47,4 @@ services:
 
 volumes:
   pgdata:
+  archive:

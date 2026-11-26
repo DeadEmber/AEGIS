@@ -19,7 +19,7 @@ Convenciones:
 
 ### `archive_batches`
 
-
+Manifiesto del archivo Parquet: rango de ids, filas, SHA-256 canónico y verificación.
 
 | Columna | Tipo | Nulo | Clave |
 |---|---|---|---|
@@ -532,7 +532,7 @@ Eventos de riesgo (kill switch, conciliación).
 
 ### `scheduler_queue`
 
-Cola de prioridad de monitorización adaptativa.
+Cola de monitorización: próximo vencimiento, última observación, retraso y fallos consecutivos.
 
 | Columna | Tipo | Nulo | Clave |
 |---|---|---|---|

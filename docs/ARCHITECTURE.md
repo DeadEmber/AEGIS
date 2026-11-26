@@ -50,7 +50,7 @@ SQLite en local y PostgreSQL/Supabase en simulación permanente, con el mismo es
 | 12 | Execution | `execution/*` | ✅ simulado con cotizaciones Jupiter y costes reales; LIVE inexistente |
 | 13 | Portfolio Accounting | `accounting/*` | ✅ partida doble, FIFO, reservas, fiscalidad estimada, conciliación |
 | 14 | Historical Simulation | `research/` | 🟡 replay determinista sobre mercado simulado; ⏳ universo histórico real (ver BACKTEST_METHODOLOGY) |
-| 15 | Continuous Learning | `learning/shadow.py`, `model_versions` | 🟡 cartera sombra y etiquetas; ⏳ entrenamiento |
+| 15 | Continuous Learning | `learning/shadow.py`, `storage/archive.py`, `model_versions` | 🟡 cartera sombra multihorizonte, etiquetas censuradas y archivo de investigación; ⏳ entrenamiento |
 | 16 | Risk Management | `risk/controls.py` | ✅ kill switch, circuit breakers, límites |
 | 17 | Monitoring & Observability | `source_health`, `worker_heartbeats`, `system_events`, logs JSON | ✅ básico |
 
@@ -82,6 +82,10 @@ Leyenda: ✅ funcional y probado · 🟡 baseline heurístico funcional · ⏳ p
 | 8 | Jupiter `lite-api` para cotizaciones | `api.jup.ag` (clave) | Gratuito y verificado; se puede cambiar con `AEGIS_JUPITER_API_KEY` y la URL |
 | 9 | Heurísticas versionadas antes que ML | entrenar ya | No existe aún un dataset representativo sin sesgo de supervivencia (ver BACKTEST_METHODOLOGY) |
 | 10 | API propia entre el dashboard y la DB | dashboard → Supabase directo | Una sola capa de autorización y el formato decimal exacto controlado |
+| 11 | Dos niveles de almacenamiento: DB operativa + archivo Parquet (zstd) consultado con DuckDB | Data warehouse, object storage gestionado | Sin infraestructura nueva; compresión medida de 6–21x; el archivo es el dataset de investigación de por vida |
+| 12 | Borrar solo lo archivado y verificado (SHA-256 canónico + comprobación de ids) | Retención por antigüedad | La auditoría demostró pérdida irreversible de datos de entrenamiento |
+| 13 | Vía rápida del worker (despertar al primer vencimiento de prioridad ≤ 3, mínimo 60 s) | Bajar el ciclo completo a 60 s | El descubrimiento y la seguridad cuestan cuota; solo lo urgente necesita alta frecuencia |
+| 14 | Cartera sombra multihorizonte con ventanas de frescura | Horizonte fijo de 14 días | Las etiquetas de largo plazo (30–365 d) y la censura son imprescindibles para supervivencia y E1/E2 |
 
 ## Entornos
 

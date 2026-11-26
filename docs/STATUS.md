@@ -1,6 +1,6 @@
 # Estado del proyecto (registro persistente entre sesiones)
 
-Última actualización: 2026-11-26 · rama `claude/aegis-foundation` · versión 0.2.0
+Última actualización: 2026-11-26 · rama `claude/aegis-foundation` · versión 0.2.2
 
 ## Resumen
 
@@ -51,6 +51,22 @@ Hallazgos con datos reales:
 - Las posiciones creadas antes de la migración 0002 no tienen `capital_recovered_at` ni
   `capital_available_at` (datos históricos sin ese dato, no se reconstruyen).
 
+## Auditoría independiente sobre el commit 45240ba (correcciones en 0.2.2)
+
+Cada hallazgo se reprodujo **antes** de corregirlo (script de reproducción contra 45240ba). Resultado:
+
+| Hallazgo | ¿Reproducido? | Evidencia | Corrección | Pruebas |
+|---|---|---|---|---|
+| P1 Retención destruye histórico | **Sí** | `prune` borró 128 snapshots, 117 features y 117 decisiones sin copia | Archivo Parquet (zstd) con manifiesto y SHA-256 reverificado; `prune` solo borra filas presentes en un lote verificado; ventanas de episodio ±48 h a resolución completa | `tests/integration/test_archive.py` (6) |
+| P1 Frecuencia efectiva / `position_unobserved` | **Sí, más grave** | La posición no observada se reprogramaba +600 s en cada ciclo y **nunca volvía a estar vencida** (starvation permanente), además perdía prioridad (→2). Con ciclo de 300 s, el hueco efectivo era 300 s frente a los 180 s configurados | Los fallidos siguen vencidos, cuentan fallos y escalan a prioridad 0; próximo refresco anclado en la observación real; vía rápida (mín. 60 s) para prioridades ≤ 3; respaldo DexScreener; retraso y antigüedad registrados (`/system`) | `tests/integration/test_scheduling.py` (6) |
+| P1 Shadow 14 días | **Sí** | Cerró en el día 15 con multiplicador x2 tomado de un precio del día 1 | Horizontes 24 h/7/30/90/180/365 d; `observed`/`unknown`/`censored`; bruto frente a liquidable; nunca precios obsoletos; límites diarios; cohortes `reentry_discarded` y `after_exit` | `tests/unit/test_shadow.py` (8) + integración |
+| P2 Monetización y grandes ganadores | n/a (investigación) | — | Experimento E2 en el ROADMAP y variantes en `research.compare`; la política por defecto no cambia | `test_monetisation_grid_runs_under_identical_conditions` |
+| P2 ECV: mediana frente a esperanza | **Sí** (documental) | La base empírica usaba la mediana KM como "duración esperada" | Documentado en código y especificación; RMST(τ) = E[min(T, τ)] disponible como alternativa coherente con la censura; ECV sigue desactivado | `test_rmst_is_an_expectation_not_the_median` |
+
+Hallazgo adicional durante la verificación de E2: en la trayectoria simulada, **no** recuperar el capital
+a x2 dejó que el trailing vendiera más tarde y más arriba (4,61 EUR frente a 3,37 EUR de reciclado).
+No se cambia la política: es justo la pregunta que E2 debe responder con datos reales.
+
 ## Limitaciones vigentes
 
 - Sin universo histórico representativo ni backtest 2024–hoy (sesgo de supervivencia de las APIs
@@ -60,6 +76,13 @@ Hallazgos con datos reales:
 - Sin grafo de wallets ni ingesta de trades individuales.
 - El worker no está desplegado de forma permanente (requiere aprobación y coste).
 - La fiscalidad es una estimación: no incluye la permuta del lado SOL ni la regla de los 2 meses.
+- La vía rápida está limitada por la cuota gratuita de GeckoTerminal (~9 llamadas/min): hasta 90 tokens
+  por ciclo rápido (3 llamadas). Con cientos de posiciones calientes simultáneas los 60–180 s no se
+  garantizan; el retraso queda medido en `/system`.
+- El archivo vive en disco local (`AEGIS_ARCHIVE_DIR`). Requiere un volumen persistente y una copia
+  externa: la copia externa no está implementada (decisión y posible coste del propietario).
+- Las filas de la cartera sombra anteriores a 0.2.2 se marcan `legacy` y se reevalúan con la nueva
+  lógica. Su cierre a 14 días con precios obsoletos no se reconstruye.
 - El valor liquidable de posiciones usa una estimación CPMM (no se pide cotización de venta para cada
   posición en cada ciclo, para no agotar el rate limit). Para CLMM/DLMM es una aproximación.
 
