@@ -17,6 +17,7 @@ puede demostrarse todavía (ver `BACKTEST_METHODOLOGY.md`).
 | `aegis once` (ciclo 1) | 60 observaciones, 58 tokens nuevos, 4 chequeos de seguridad, 4 compras simuladas con cotización de Jupiter, 0 errores, conciliación OK, 28 s |
 | `aegis once` (ciclo 2) | 76 observaciones, 4 posiciones valoradas (liquidable 3,51 EUR + depósitos 0,39 EUR frente a 4,00 EUR invertidos), rechazos explicados (FDV 32, precio 13, antigüedad 3), conciliación OK |
 | PostgreSQL 16 local | migración Alembic + 24 ciclos simulados OK, decimales exactos, índice parcial único |
+| Dashboard | `next build` OK (14 rutas estáticas), revisado con capturas en escritorio y móvil (390 px, sin scroll horizontal) en temas claro y oscuro, sin errores de consola contra la API sobre una base de demo |
 
 Hallazgos con datos reales:
 

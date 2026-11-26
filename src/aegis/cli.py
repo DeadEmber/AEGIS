@@ -211,9 +211,17 @@ def cmd_kill(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="aegis", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--db", help="override AEGIS_DATABASE_URL")
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--db", default=argparse.SUPPRESS, help="override AEGIS_DATABASE_URL")
+    p = argparse.ArgumentParser(prog="aegis", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
+                                parents=[common])
     sub = p.add_subparsers(dest="cmd", required=True)
+    _orig_add = sub.add_parser
+
+    def _add(name: str, **kw):  # type: ignore[no-untyped-def]
+        return _orig_add(name, parents=[common], **kw)
+
+    sub.add_parser = _add  # type: ignore[method-assign]
     d = sub.add_parser("db")
     d.add_argument("action", choices=["upgrade"])
     d.set_defaults(fn=cmd_db)
@@ -240,6 +248,8 @@ def main(argv: list[str] | None = None) -> int:
     k.add_argument("--reason", required=True)
     k.set_defaults(fn=cmd_kill)
     args = p.parse_args(argv)
+    if not hasattr(args, "db"):
+        args.db = None
     alog.configure(Settings().log_level)
     return int(args.fn(args))
 

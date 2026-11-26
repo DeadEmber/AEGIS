@@ -520,9 +520,10 @@ class Worker:
                 self._decision_row(c, Decision(Action.SUSPEND, 0, ctl.reasons), now, outcome="suspended", token=False)
             if ctl.sells_allowed:
                 for d, p, ti in exits:
-                    did = self._decision_row(c, d, now)
+                    trades = d.action in (Action.PARTIAL_SELL, Action.FULL_SELL) and ti is not None
+                    did = self._decision_row(c, d, now, outcome="pending" if trades else "no_order")
                     rep.decisions += 1
-                    if d.action not in (Action.PARTIAL_SELL, Action.FULL_SELL) or ti is None:
+                    if not trades:
                         continue
                     tok = TokenRef(p.token_id, ti.address, ti.decimals)
                     key = f"{cid}:{p.id}:{d.action}"

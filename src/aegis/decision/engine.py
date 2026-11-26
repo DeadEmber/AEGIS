@@ -204,7 +204,8 @@ class DecisionEngine:
         if p.state == MarketState.COLLAPSE and to_residual > 0 and total_multiple > ONE:
             return dec(Action.PARTIAL_SELL, ["collapse while still in profit: secure value, keep residual"],
                        to_residual, priority=7)
-        return dec(Action.HOLD, [f"hold: net x{total_multiple:.2f}, state {p.state}, PRS {prs}"],
+        prs_txt = "n/a" if prs is None else f"{prs:.2f}"
+        return dec(Action.HOLD, [f"hold: net x{total_multiple:.2f}, state {p.state}, PRS {prs_txt}"],
                    priority=3 if p.state in HOT_STATES else 1)
 
     # ------------------------------------------------------------------ entries
