@@ -254,6 +254,11 @@ class DecisionEngine:
             sc = c.scores.as_dict()
             inputs = {"t": c.token_id, "state": str(c.state), "sec": c.security_verdict, "scores": sc,
                       "elig": c.eligibility.failed}
+            # Cheap deterministic filters first so the recorded reason is the real one (not "security unknown").
+            if c.entries == 0 and not c.eligibility.eligible:
+                others.append(Decision(Action.REJECT, c.token_id, [f"filter:{n}" for n in c.eligibility.failed],
+                                       sc).finalize(inputs))
+                continue
             rej = self._base_rejections(c)
             if rej:
                 others.append(Decision(Action.REJECT, c.token_id, rej, sc).finalize(inputs))
