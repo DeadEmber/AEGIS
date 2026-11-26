@@ -97,3 +97,32 @@ class SellFill:
     @property
     def cash_in_eur(self) -> Decimal:
         return self.net_proceeds_eur + self.deposit_refund_eur
+
+
+@dataclass(frozen=True)
+class SwapQuote:
+    """Provider-agnostic executable quote (e.g. Jupiter /swap/v1/quote). A quote is NOT a fill."""
+
+    source: str
+    input_mint: str
+    output_mint: str
+    in_amount_raw: int
+    out_amount_raw: int
+    min_out_raw: int  # otherAmountThreshold after slippage tolerance
+    price_impact_pct: Decimal | None
+    route_labels: tuple[str, ...]
+    fetched_at: dt.datetime
+    context_slot: int | None = None
+    platform_fee_bps: int = 0
+    raw: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class MarketContext:
+    """Point-in-time market facts available to the execution engine for one token."""
+
+    price_eur: Decimal | None
+    liquidity_eur: Decimal | None
+    sol_eur: Decimal
+    observed_at: dt.datetime
+    pool_type: str = "unknown"
